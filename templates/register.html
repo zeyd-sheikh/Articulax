@@ -6,4 +6,19 @@
 
 {% block body %} 
 
+<form method="POST" id="registerForm">
+    <input type="text" name="first_name" placeholder="First name">
+    <input type="text" name="last_name" placeholder="Last name">
+    <input type="email" name="email" placeholder="Email">
+    <input type="text" name="username" placeholder="Username">
+    <input type="password" name="password" id="password" placeholder="Password">
+    <input type="password" name="confirm_password" id="confirm_password" placeholder="Confirm password">
+
+    <button type="submit">Register</button>
+</form>
+
+{% if error %}
+    <p>{{ error }}</p>
+{% endif %}
+
 {% endblock %}

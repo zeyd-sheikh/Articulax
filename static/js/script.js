@@ -1,5 +1,4 @@
 const com_form = document.getElementById('com_form');
-
 const mic_status = document.getElementById('mic_status');       // html file should have <p id="mic_status"></p> somewhere on the page
 
 async function requestMicPermission() {         // Function handles the microphone permissions
@@ -37,3 +36,18 @@ async function requestMicPermission() {         // Function handles the micropho
     }
 }
 
+const registerForm = document.getElementById("registerForm");
+const passwordInput = document.getElementById("password");
+const confirmPasswordInput = document.getElementById("confirm_password");
+
+if (registerForm) {
+    registerForm.addEventListener("submit", function (event) {
+        const password = passwordInput.value.trim();
+        const confirmPassword = confirmPasswordInput.value.trim();
+
+        if (password !== confirmPassword) {
+            event.preventDefault();
+            alert("Passwords do not match.");
+        }
+    });
+}
