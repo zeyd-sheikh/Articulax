@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     FOREIGN KEY (user_id)
     REFERENCES users(user_id),
     CHECK (score >= 0 AND score <= 100),
-    CHECK (mode IN ('communication', 'interview', 'presentation'))
+    CHECK (mode IN ('Communication', 'Interview', 'Presentation'))
 );
 
 CREATE TABLE IF NOT EXISTS session_artifacts (
@@ -45,16 +45,16 @@ CREATE TABLE IF NOT EXISTS session_artifacts (
 
 CREATE TABLE IF NOT EXISTS com_sessions (
     session_id INT PRIMARY KEY,
-    mode VARCHAR(25) NOT NULL DEFAULT 'communication',
+    mode VARCHAR(25) NOT NULL DEFAULT 'Communication',
     topic VARCHAR(50) NOT NULL,
     audience VARCHAR(20) NOT NULL,
     tone VARCHAR(20) NOT NULL,
     duration INT NOT NULL,
     FOREIGN KEY (session_id)
     REFERENCES sessions(session_id),
-    CHECK (mode = 'communication'),
-    CHECK (audience IN ('kids', 'general', 'professional')),
-    CHECK (tone IN ('formal', 'persuasive', 'casual'))
+    CHECK (mode = 'Communication'),
+    CHECK (audience IN ('Kids', 'General', 'Professional')),
+    CHECK (tone IN ('Formal', 'Persuasive', 'Casual'))
 );
 
 CREATE TABLE IF NOT EXISTS com_session_scores (

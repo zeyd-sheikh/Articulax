@@ -1,4 +1,4 @@
-from flask import Flask, render_template, render_template, request, redirect, url_for, make_response, session
+from flask import Flask, render_template, request, redirect, url_for, make_response, session
 
 from dotenv import load_dotenv
 import os
@@ -16,6 +16,7 @@ def get_db_connection():
     )
 
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY")
 
 @app.route("/")
 def home():
