@@ -18,10 +18,6 @@ def get_db_connection():
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
 
-@app.route("/")
-def home():
-    return render_template('home.html')
-
 def user_exists(email, username):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -55,6 +51,19 @@ def get_user_by_username(username):
     conn.close()
 
     return user
+
+def current_user():
+    if "user_id" not in session:
+        return None
+
+    return {
+        "user_id": session["user_id"],
+        "username": session["username"]
+    }
+
+@app.route("/")
+def home():
+    return render_template('home.html')
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -123,9 +132,32 @@ def login():
         session["user_id"] = user["user_id"]
         session["username"] = user["username"]
 
-        return redirect(url_for("home"))
+        return redirect(url_for("dashboard"))
 
     return render_template("login.html", error=None)
+
+@app.route("/dashboard")
+def dashboard():
+    user = current_user()
+
+    if user is None:
+        return redirect(url_for("login"))
+
+    return render_template("dashboard.html", username=user["username"])
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+@app.route("/session")
+def session_page():
+    user = current_user()
+
+    if user is None:
+        return redirect(url_for("login"))
+
+    return render_template("session.html", username=user["username"])
 
 if __name__ == "__main__":
     app.run(debug=True)

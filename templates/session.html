@@ -6,4 +6,15 @@
 
 {% block body %} 
 
+<h1>Session Setup</h1>
+<p>Welcome, {{ username }}</p>
+
+<p id="mic_status">Checking microphone...</p>
+
+<form method="GET" action="{{ url_for('results') }}">
+    <button type="submit" id="start_session_btn" disabled>Start Session</button>
+</form>
+
+<script src="{{ url_for('static', filename='js/microphone.js') }}" defer></script>
+
 {% endblock %}
