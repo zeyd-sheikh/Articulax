@@ -1,70 +1,60 @@
 {% extends 'base.html' %}
 
-{% block title %}Session Setup - Articulax{% endblock %}
+{% block title %}Live Session - Articulax{% endblock %}
 
 {% block body %}
 <section class="page-header">
     <div>
-        <h1>Communication Session Setup</h1>
-        <p class="subtext">Set up your session options, check your microphone, and begin when ready.</p>
+        <h1>Communication Session</h1>
+        <p class="subtext">Review your setup, enable your microphone, and begin when ready.</p>
     </div>
 </section>
 
 <section class="card form-card">
-    {% if error %}
-        <p class="error-text">{{ error }}</p>
-    {% endif %}
-
-    <form method="POST" class="session-form">
+    <div class="session-form">
         <div class="form-group">
-            <label for="topic">Topic</label>
-            <input
-                type="text"
-                id="topic"
-                name="topic"
-                value="{{ selected_topic or '' }}"
-                placeholder="Enter your topic"
-                required
-            >
+            <label>Topic</label>
+            <input type="text" value="{{ topic }}" readonly>
         </div>
+
+        <input type="hidden" id="session_duration" value="{{ duration }}">
 
         <div class="form-grid">
             <div class="form-group">
-                <label for="audience">Audience</label>
-                <select id="audience" name="audience" required>
-                    <option value="Kids">Kids</option>
-                    <option value="General" selected>General</option>
-                    <option value="Professional">Professional</option>
-                </select>
+                <label>Audience</label>
+                <input type="text" value="{{ audience }}" readonly>
             </div>
 
             <div class="form-group">
-                <label for="tone">Tone</label>
-                <select id="tone" name="tone" required>
-                    <option value="Formal">Formal</option>
-                    <option value="Persuasive">Persuasive</option>
-                    <option value="Casual" selected>Casual</option>
-                </select>
+                <label>Tone</label>
+                <input type="text" value="{{ tone }}" readonly>
             </div>
 
             <div class="form-group">
-                <label for="duration">Duration (minutes)</label>
-                <select id="duration" name="duration" required>
-                    <option value="1">1 minute</option>
-                    <option value="2">2 minutes</option>
-                    <option value="3" selected>3 minutes</option>
-                    <option value="5">5 minutes</option>
-                </select>
+                <label>Duration</label>
+                <input type="text" value="{{ duration }} minutes" readonly>
             </div>
         </div>
+
 
         <div class="mic-box">
             <p class="mic-label">Microphone Status</p>
-            <p id="mic_status" class="mic-status">Checking microphone...</p>
+            <p id="mic_status" class="mic-status">Microphone not enabled yet.</p>
         </div>
 
-        <button type="submit" id="start_session_btn" class="primary-btn" disabled>Start Session</button>
-    </form>
+        <div class="page-actions">
+            <button type="button" id="enable_mic_btn" class="secondary-btn">Enable Microphone</button>
+            <button type="button" id="start_session_btn" class="primary-btn" disabled>Start Session</button>
+            <a href="{{ url_for('dashboard') }}" id="back_to_dashboard_btn" class="secondary-btn link-btn">Back to Dashboard</a>
+            <button type="button" id="cancel_session_btn" class="secondary-btn" hidden>Cancel Session</button>
+        </div>
+
+        <div class="card session-status-card" id="session_status_box" hidden>
+            <p class="mic-label">Session Status</p>
+            <p id="session_status_text" class="mic-status">Session not started.</p>
+            <p id="session_timer" class="session-timer">00:00</p>
+        </div>
+    </div>
 </section>
 
 <script src="{{ url_for('static', filename='js/microphone.js') }}" defer></script>

@@ -65,28 +65,60 @@
     </div>
 </section>
 
-<section class="topic-section">
-    <div class="topic-row topic-row-custom">
-        <form method="GET" action="{{ url_for('session_page') }}" class="topic-form">
-            <input
-                type="text"
-                name="topic"
-                placeholder="Type a custom communication topic"
-                class="topic-input"
-                required
-            >
-            <button type="submit" class="primary-btn">Start Session</button>
-        </form>
+
+<section class="setup-section">
+    <div class="setup-header">
+        <h2>Communication Session Setup</h2>
+        <p class="subtext">Set up your session options before continuing to the live session.</p>
     </div>
 
-    {% for topic in preset_topics %}
-    <div class="topic-row">
-        <div class="topic-title">{{ topic }}</div>
-        <form method="GET" action="{{ url_for('session_page') }}">
-            <input type="hidden" name="topic" value="{{ topic }}">
-            <button type="submit" class="primary-btn">Start Session</button>
-        </form>
-    </div>
-    {% endfor %}
+    <section class="card form-card">
+
+    <form method="GET" action="{{ url_for('session_start') }}" class="session-form">
+        <div class="form-group">
+            <label for="topic">Topic</label>
+            <input
+                type="text"
+                id="topic"
+                name="topic"
+                placeholder="Enter your topic"
+                required
+            >
+        </div>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="audience">Audience</label>
+                <select id="audience" name="audience" required>
+                    <option value="Kids">Kids</option>
+                    <option value="General" selected>General</option>
+                    <option value="Professional">Professional</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="tone">Tone</label>
+                <select id="tone" name="tone" required>
+                    <option value="Formal">Formal</option>
+                    <option value="Persuasive">Persuasive</option>
+                    <option value="Casual" selected>Casual</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="duration">Duration (minutes)</label>
+                <select id="duration" name="duration" required>
+                    <option value="1">1 minute</option>
+                    <option value="2">2 minutes</option>
+                    <option value="3" selected>3 minutes</option>
+                    <option value="5">5 minutes</option>
+                </select>
+            </div>
+        </div>
+
+        <button type="submit" class="primary-btn">Continue to Session</button>
+    </form>
+    </section>
+
 </section>
 {% endblock %}

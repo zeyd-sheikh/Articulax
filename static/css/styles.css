@@ -347,8 +347,26 @@ body {
     gap: 14px;
 }
 
+.setup-section {
+    max-width: 1000px;
+    margin: 32px auto 0;
+}
+
+.setup-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.setup-header h2 {
+    font-size: 2rem;
+    margin-bottom: 10px;
+}
+
 .form-card {
-    max-width: 800px;
+    max-width: 1000px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 30px;
 }
 
 .session-form {
@@ -467,4 +485,15 @@ body {
 .recent-session-link:hover .recent-session-item {
     border-color: #93c5fd;
     box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+}
+
+.session-status-card {
+    margin-top: 18px;
+}
+
+.session-timer {
+    margin-top: 10px;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1d4ed8;
 }

@@ -18,7 +18,6 @@
 
                 {% if session.get('user_id') %}
                     <a href="{{ url_for('dashboard') }}">Dashboard</a>
-                    <a href="{{ url_for('session_page') }}">Session</a>
                     <form method="POST" action="{{ url_for('logout') }}" class="inline-form">
                         <button type="submit" class="nav-button">Logout</button>
                     </form>

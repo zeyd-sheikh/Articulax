@@ -359,74 +359,44 @@ def dashboard():
 
     recent_sessions = get_recent_communication_sessions(user["user_id"], limit=5)
 
-    preset_topics = [
-        "Introduce yourself in a professional setting",
-        "Explain a current issue to a general audience",
-        "Give a persuasive opinion on a simple topic",
-        "Describe a past project and what you learned",
-        "Present a short formal update"
-    ]
-
     return render_template(
         "dashboard.html",
         username=user["username"],
         recent_sessions=recent_sessions,
-        preset_topics=preset_topics
     )
 
 
-@app.route("/session", methods=["GET", "POST"])
-def session_page():
+@app.route("/session", methods=["GET"])
+def session_start():
     user = current_user()
 
     if user is None:
         return redirect(url_for("login"))
 
-    selected_topic = request.args.get("topic", "").strip()
+    topic = request.args.get("topic", "").strip()
+    audience = request.args.get("audience", "").strip()
+    tone = request.args.get("tone", "").strip()
+    duration = request.args.get("duration", "").strip()
 
-    if request.method == "POST":
-        topic = request.form.get("topic", "").strip()
-        audience = request.form.get("audience", "").strip()
-        tone = request.form.get("tone", "").strip()
-        duration = request.form.get("duration", "").strip()
+    valid_audiences = {"Kids", "General", "Professional"}
+    valid_tones = {"Formal", "Persuasive", "Casual"}
 
-        error = None
-
-        valid_audiences = {"Kids", "General", "Professional"}
-        valid_tones = {"Formal", "Persuasive", "Casual"}
-
-        if not topic:
-            error = "Topic is required."
-        elif audience not in valid_audiences:
-            error = "Invalid audience selected."
-        elif tone not in valid_tones:
-            error = "Invalid tone selected."
-        elif not duration.isdigit() or int(duration) <= 0:
-            error = "Duration must be a positive number."
-
-        if error:
-            return render_template(
-                "session.html",
-                username=user["username"],
-                selected_topic=topic,
-                error=error
-            )
-
-        new_session_id = create_communication_session(
-            user["user_id"],
-            topic,
-            audience,
-            tone,
-            duration
-        )
-
-        return redirect(url_for("results", session_id=new_session_id))
+    if not topic:
+        return redirect(url_for("dashboard"))
+    if audience not in valid_audiences:
+        return redirect(url_for("dashboard"))
+    if tone not in valid_tones:
+        return redirect(url_for("dashboard"))
+    if not duration.isdigit() or int(duration) <= 0:
+        return redirect(url_for("dashboard"))
 
     return render_template(
         "session.html",
         username=user["username"],
-        selected_topic=selected_topic,
-        error=None
+        topic=topic,
+        audience=audience,
+        tone=tone,
+        duration=duration
     )
 
 
