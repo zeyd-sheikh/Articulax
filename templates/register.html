@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+
+{% block title %}Register - Articulax{% endblock %}
+
+{% block body %}
+<section class="auth-wrapper">
+    <div class="card auth-card">
+        <h1>Create Account</h1>
+        <p class="subtext">Register to start practicing with Articulax.</p>
+
+        <form method="POST" id="registerForm" class="auth-form">
+            <input type="text" name="first_name" placeholder="First name" required>
+            <input type="text" name="last_name" placeholder="Last name" required>
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" id="password" placeholder="Password" required>
+            <input type="password" name="confirm_password" id="confirm_password" placeholder="Confirm password" required>
+
+            <button type="submit" class="primary-btn">Register</button>
+        </form>
+
+        {% if error %}
+            <p class="error-text">{{ error }}</p>
+        {% endif %}
+    </div>
+</section>
+
+<script src="{{ url_for('static', filename='js/register.js') }}"></script>
+{% endblock %}

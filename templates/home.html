@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}Home - Articulax{% endblock %}
+
+{% block body %}
+<section class="hero">
+    <div class="hero-content">
+        <h1>Practice speaking with structure, feedback, and progress tracking.</h1>
+        <p class="subtext">
+            Articulax helps users improve communication performance through guided speaking sessions.
+        </p>
+
+        <div class="hero-actions">
+            {% if session.get('user_id') %}
+                <a href="{{ url_for('dashboard') }}" class="primary-btn link-btn">Go to Dashboard</a>
+            {% else %}
+                <a href="{{ url_for('register') }}" class="primary-btn link-btn">Get Started</a>
+                <a href="{{ url_for('login') }}" class="secondary-btn link-btn">Login</a>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<section class="info-grid">
+    <div class="info-item">
+        <h2>Communication</h2>
+        <p>Practice general speaking with different audiences, tones, and topics.</p>
+    </div>
+    <div class="info-item disabled-card">
+        <h2>Interview</h2>
+        <p>Coming later. Practice interview responses with structured evaluation.</p>
+    </div>
+    <div class="info-item disabled-card">
+        <h2>Presentation</h2>
+        <p>Coming later. Rehearse presentations and receive feedback on delivery and clarity.</p>
+    </div>
+</section>
+{% endblock %}

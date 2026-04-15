@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+
+{% block title %}Session Setup - Articulax{% endblock %}
+
+{% block body %}
+<section class="page-header">
+    <div>
+        <h1>Communication Session Setup</h1>
+        <p class="subtext">Set up your session options, check your microphone, and begin when ready.</p>
+    </div>
+</section>
+
+<section class="card form-card">
+    {% if error %}
+        <p class="error-text">{{ error }}</p>
+    {% endif %}
+
+    <form method="POST" class="session-form">
+        <div class="form-group">
+            <label for="topic">Topic</label>
+            <input
+                type="text"
+                id="topic"
+                name="topic"
+                value="{{ selected_topic or '' }}"
+                placeholder="Enter your topic"
+                required
+            >
+        </div>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="audience">Audience</label>
+                <select id="audience" name="audience" required>
+                    <option value="Kids">Kids</option>
+                    <option value="General" selected>General</option>
+                    <option value="Professional">Professional</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="tone">Tone</label>
+                <select id="tone" name="tone" required>
+                    <option value="Formal">Formal</option>
+                    <option value="Persuasive">Persuasive</option>
+                    <option value="Casual" selected>Casual</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="duration">Duration (minutes)</label>
+                <select id="duration" name="duration" required>
+                    <option value="1">1 minute</option>
+                    <option value="2">2 minutes</option>
+                    <option value="3" selected>3 minutes</option>
+                    <option value="5">5 minutes</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="mic-box">
+            <p class="mic-label">Microphone Status</p>
+            <p id="mic_status" class="mic-status">Checking microphone...</p>
+        </div>
+
+        <button type="submit" id="start_session_btn" class="primary-btn" disabled>Start Session</button>
+    </form>
+</section>
+
+<script src="{{ url_for('static', filename='js/microphone.js') }}" defer></script>
+{% endblock %}

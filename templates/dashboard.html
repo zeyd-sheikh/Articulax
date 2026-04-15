@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Articulax{% endblock %}
+
+{% block body %}
+<section class="page-header">
+    <div>
+        <h1>Dashboard</h1>
+        <p class="subtext">Welcome back, {{ username }}. Track your communication practice and start a new session.</p>
+    </div>
+</section>
+
+<section class="mode-tabs">
+    <button class="mode-tab active" type="button">Communication</button>
+    <button class="mode-tab disabled" type="button" disabled>Interview</button>
+    <button class="mode-tab disabled" type="button" disabled>Presentation</button>
+</section>
+
+<section class="dashboard-top">
+    <div class="card chart-card">
+        <div class="card-header">
+            <h2>Score Over Time</h2>
+            <div class="filter-tabs">
+                <button class="filter-tab">Week</button>
+                <button class="filter-tab">Month</button>
+                <button class="filter-tab">Six Months</button>
+                <button class="filter-tab">Year</button>
+                <button class="filter-tab active">All Time</button>
+            </div>
+        </div>
+
+        <div class="chart-placeholder">
+            <div class="chart-y-label">Score</div>
+            <div class="chart-box">
+                <div class="chart-line"></div>
+            </div>
+            <div class="chart-x-label">Date</div>
+        </div>
+    </div>
+
+    <div class="card recent-card">
+        <div class="card-header">
+            <h2>Recent Sessions</h2>
+        </div>
+
+        {% if recent_sessions %}
+            <div class="session-list">
+                {% for item in recent_sessions %}
+                    <a href="{{ url_for('results', session_id=item.session_id) }}" class="recent-session-link">
+                        <div class="recent-session-item">
+                            <div>
+                                <p class="session-topic">{{ item.topic }}</p>
+                                <p class="session-meta">{{ item.date }} • Score: {{ item.score }}</p>
+                            </div>
+                        </div>
+                    </a>
+                {% endfor %}
+            </div>
+
+            <button class="secondary-btn full-width" type="button">Load More</button>
+        {% else %}
+            <p class="empty-text">No recent communication sessions yet.</p>
+            <button class="secondary-btn full-width" type="button">Load More</button>
+        {% endif %}
+    </div>
+</section>
+
+<section class="topic-section">
+    <div class="topic-row topic-row-custom">
+        <form method="GET" action="{{ url_for('session_page') }}" class="topic-form">
+            <input
+                type="text"
+                name="topic"
+                placeholder="Type a custom communication topic"
+                class="topic-input"
+                required
+            >
+            <button type="submit" class="primary-btn">Start Session</button>
+        </form>
+    </div>
+
+    {% for topic in preset_topics %}
+    <div class="topic-row">
+        <div class="topic-title">{{ topic }}</div>
+        <form method="GET" action="{{ url_for('session_page') }}">
+            <input type="hidden" name="topic" value="{{ topic }}">
+            <button type="submit" class="primary-btn">Start Session</button>
+        </form>
+    </div>
+    {% endfor %}
+</section>
+{% endblock %}
