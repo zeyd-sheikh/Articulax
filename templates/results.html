@@ -6,14 +6,29 @@
 <section class="page-header">
     <div>
         <h1>Session Results</h1>
-        <p class="subtext">Here is your latest communication session summary.</p>
+        <p class="subtext">Here is your communication session summary.</p>
     </div>
 </section>
 
 <section class="results-layout">
     <div class="card results-main">
         <h2>{{ result.topic }}</h2>
-        <p class="subtext">{{ result.date }} • {{ result.mode }}</p>
+        <p class="subtext">{{ result.date }} &bull; {{ result.mode }}</p>
+
+        <div class="session-details-grid">
+            <div class="detail-item">
+                <span class="detail-label">Audience</span>
+                <span class="detail-value">{{ result.audience }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Tone</span>
+                <span class="detail-value">{{ result.tone }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Duration</span>
+                <span class="detail-value">{{ result.duration }} min</span>
+            </div>
+        </div>
 
         <div class="score-circle">
             <span>{{ result.overall_score }}</span>
@@ -21,7 +36,7 @@
         </div>
 
         <div class="feedback-box">
-            <h3>Feedback</h3>
+            <h3>Overall Feedback</h3>
             <p>{{ result.feedback }}</p>
         </div>
     </div>
@@ -29,31 +44,78 @@
     <div class="card score-breakdown">
         <h2>Score Breakdown</h2>
         <div class="metric-row">
-            <span>Vocabulary</span>
-            <strong>{{ result.vocabulary }}</strong>
+            <span>Clarity</span>
+            <strong>{{ result.clarity }}</strong>
+        </div>
+        <div class="metric-row">
+            <span>Confidence</span>
+            <strong>{{ result.confidence }}</strong>
+        </div>
+        <div class="metric-row">
+            <span>Structure</span>
+            <strong>{{ result.structure }}</strong>
         </div>
         <div class="metric-row">
             <span>Relevance</span>
             <strong>{{ result.relevance }}</strong>
         </div>
         <div class="metric-row">
-            <span>Tone / Confidence</span>
-            <strong>{{ result.confidence }}</strong>
-        </div>
-        <div class="metric-row">
-            <span>Register</span>
-            <strong>{{ result.register }}</strong>
+            <span>Vocabulary</span>
+            <strong>{{ result.vocabulary }}</strong>
         </div>
     </div>
 </section>
 
+{% if result.clarity_feedback or result.confidence_feedback or result.structure_feedback or result.relevance_feedback or result.vocabulary_feedback %}
+<section class="card skill-feedback-section">
+    <h2>Skill Feedback</h2>
+
+    {% if result.clarity_feedback %}
+    <div class="skill-feedback-block">
+        <h3>Clarity</h3>
+        <p>{{ result.clarity_feedback }}</p>
+    </div>
+    {% endif %}
+
+    {% if result.confidence_feedback %}
+    <div class="skill-feedback-block">
+        <h3>Confidence</h3>
+        <p>{{ result.confidence_feedback }}</p>
+    </div>
+    {% endif %}
+
+    {% if result.structure_feedback %}
+    <div class="skill-feedback-block">
+        <h3>Structure</h3>
+        <p>{{ result.structure_feedback }}</p>
+    </div>
+    {% endif %}
+
+    {% if result.relevance_feedback %}
+    <div class="skill-feedback-block">
+        <h3>Relevance</h3>
+        <p>{{ result.relevance_feedback }}</p>
+    </div>
+    {% endif %}
+
+    {% if result.vocabulary_feedback %}
+    <div class="skill-feedback-block">
+        <h3>Vocabulary</h3>
+        <p>{{ result.vocabulary_feedback }}</p>
+    </div>
+    {% endif %}
+</section>
+{% endif %}
+
 <section class="card transcript-card">
-    <h2>Transcript Preview</h2>
-    <p>{{ result.transcript }}</p>
+    <h2>Transcript</h2>
+    <div class="transcript-box">
+        <p>{{ result.transcript }}</p>
+    </div>
 </section>
 
 <div class="page-actions">
     <a href="{{ url_for('dashboard') }}" class="secondary-btn link-btn">Back to Dashboard</a>
-    <a href="{{ url_for('session_page') }}" class="primary-btn link-btn">Try Another Session</a>
+    <a href="{{ url_for('dashboard') }}" class="primary-btn link-btn">Start New Session</a>
 </div>
 {% endblock %}

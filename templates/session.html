@@ -17,6 +17,9 @@
             <input type="text" value="{{ topic }}" readonly>
         </div>
 
+        <input type="hidden" id="session_topic" value="{{ topic }}">
+        <input type="hidden" id="session_audience" value="{{ audience }}">
+        <input type="hidden" id="session_tone" value="{{ tone }}">
         <input type="hidden" id="session_duration" value="{{ duration }}">
 
         <div class="form-grid">
@@ -36,7 +39,6 @@
             </div>
         </div>
 
-
         <div class="mic-box">
             <p class="mic-label">Microphone Status</p>
             <p id="mic_status" class="mic-status">Microphone not enabled yet.</p>
@@ -48,6 +50,8 @@
             <a href="{{ url_for('dashboard') }}" id="back_to_dashboard_btn" class="secondary-btn link-btn">Back to Dashboard</a>
             <button type="button" id="cancel_session_btn" class="secondary-btn" hidden>Cancel Session</button>
         </div>
+
+        <p id="session_error" class="error-text" hidden></p>
 
         <div class="card session-status-card" id="session_status_box" hidden>
             <p class="mic-label">Session Status</p>
