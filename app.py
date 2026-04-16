@@ -1,53 +1,52 @@
 """
-Flask entrypoint for Articulax Communication Mode.
+This file handles:
 
-This module handles:
 - authentication and dashboard rendering
-- communication session lifecycle routes
-- orchestration of transcription, scoring, AI feedback, and persistence
+- communication session routes
+- transcription, scoring, AI feedback, and persistence
 """
 
 from flask import (
-    Flask,  # Flask application object and route registration.
-    render_template,  # Render Jinja HTML templates.
-    request,  # Read incoming HTTP form/query/files data.
-    redirect,  # Return redirect responses.
-    url_for,  # Build route URLs by endpoint name.
-    session,  # Access cookie-backed login session data.
-    jsonify,  # Return JSON API responses.
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    jsonify,            # Return JSON API responses.
 )
 from werkzeug.security import generate_password_hash, check_password_hash  # Password hashing + verification.
-from werkzeug.utils import secure_filename  # Sanitize uploaded audio filenames.
-from dotenv import load_dotenv  # Load environment variables from .env file.
-from pathlib import Path  # Safe filesystem path construction.
-import os  # Environment access and filesystem utilities.
-import json  # Serialize raw metrics before DB insert.
-import uuid  # Generate unique audio filenames.
-import logging  # Log pipeline failures for debugging.
-import traceback  # Keep traceback import available for debugging workflows.
-import mysql.connector  # MySQL database connection/driver.
+from werkzeug.utils import secure_filename                                 # Sanitize uploaded audio filenames.
 
-from services.transcription_service import transcribe_audio_file  # AssemblyAI transcription pipeline.
-from services.scoring_service import score_communication_session  # Deterministic rubric scoring.
-from services.cohere_service import generate_feedback_json  # Structured coaching feedback generation.
+from dotenv import load_dotenv                      # Load environment variables from .env file.
+from pathlib import Path                            # Safe filesystem path construction.
+import os                                           # Environment access and filesystem utilities.
+import json                                         # Serialize raw metrics before DB insert.
+import uuid                                         # Generate unique audio filenames.
+import logging                                      # Log pipeline failures for debugging.
+import mysql.connector                              # MySQL database connection/driver.
+
+from services.transcription_service import transcribe_audio_file    # AssemblyAI transcription pipeline.
+from services.scoring_service import score_communication_session    # Deterministic rubric scoring.
+from services.cohere_service import generate_feedback_json          # Structured coaching feedback generation.
 
 load_dotenv()
 
-# ── App setup ───────────────────────────────────────────────────────────────
+# App setup  ------------------------------------------------------------
 
-BASE_DIR = Path(__file__).resolve().parent
-UPLOAD_DIR = BASE_DIR / "uploads" / "audio"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+BASE_DIR = Path(__file__).resolve().parent      # Gets the folder where app.py is located
+UPLOAD_DIR = BASE_DIR / "uploads" / "audio"     # Creates the path for uploads/auido and the recorded audio files will be saved here
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)   # Make the uploads/audio folder if it does not already exist
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # Sets the maximum upload size to 50 MB
 
 
-# ── Database ────────────────────────────────────────────────────────────────
+# Database ---------------------------------------------------------------
 
 def get_db_connection():
-    """Create a MySQL connection using environment-configured credentials."""
+    """Create a MySQL connection."""
     return mysql.connector.connect(
         host=os.getenv("DB_HOST"),
         port=int(os.getenv("DB_PORT", 3306)),
@@ -57,7 +56,7 @@ def get_db_connection():
     )
 
 
-# ── Auth helpers ────────────────────────────────────────────────────────────
+# Auth helpers -----------------------------------------------------------
 
 def user_exists(email, username):
     """Check if either email or username is already registered."""
@@ -94,9 +93,10 @@ def current_user():
     return {"user_id": session["user_id"], "username": session["username"]}
 
 
-# ── MIME → file extension ───────────────────────────────────────────────────
+# MIME to file extension  -------------------------------------------------------
 
 def extension_for_mime(mime_type: str) -> str:
+    '''Return the file extension associated with a MIME type string of a file'''
     mapping = {
         "audio/webm": ".webm",
         "audio/webm;codecs=opus": ".webm",
@@ -109,7 +109,7 @@ def extension_for_mime(mime_type: str) -> str:
     return mapping.get(mime_type, ".webm")
 
 
-# ── Session queries ─────────────────────────────────────────────────────────
+# Session queries -----------------------------------------------------------
 
 def get_recent_communication_sessions(user_id, limit=5):
     """
@@ -250,7 +250,7 @@ def get_communication_session_result(session_id, user_id):
     }
 
 
-# ── DB persistence (single transaction) ────────────────────────────────────
+# DB persistence ---------------------------------------------------------------
 
 def persist_completed_communication_session(
     user_id, topic, audience, tone, duration,
@@ -272,6 +272,7 @@ def persist_completed_communication_session(
             "INSERT INTO sessions (user_id, mode, score) VALUES (%s, 'Communication', %s)",
             (user_id, scores["overall_score"]),
         )
+
         session_id = cursor.lastrowid
 
         # Communication configuration captured when user started this session.
@@ -313,7 +314,7 @@ def persist_completed_communication_session(
             ),
         )
 
-        # Raw artifacts support review/debugging without recomputing a session.
+        # Save session artifacts for results, review, and debugging.
         cursor.execute(
             "INSERT INTO session_artifacts "
             "(session_id, transcript_text, audio_file_path, raw_metrics_json) "
@@ -332,28 +333,23 @@ def persist_completed_communication_session(
         conn.close()
 
 
-# ── Routes ──────────────────────────────────────────────────────────────────
+# Routes -----------------------------------------------------------------------------------
 
 @app.route("/")
 def home():
-    """Render public landing page. Inputs: none. Returns: HTML page."""
+
     return render_template("home.html")
 
 
 @app.route("/about")
 def about():
-    """Render public About page. Inputs: none. Returns: HTML page."""
+
     return render_template("about.html")
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    """
-    Handle account registration form.
 
-    Inputs: form fields on POST (name/email/username/password fields).
-    Returns: register page with errors, or redirect to login on success.
-    """
     if request.method == "POST":
         first_name = request.form.get("first_name", "").strip()
         last_name = request.form.get("last_name", "").strip()
@@ -391,12 +387,7 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """
-    Authenticate a user by username/password.
 
-    Inputs: form fields on POST ('username', 'password').
-    Returns: login page with errors, or redirect to dashboard on success.
-    """
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
@@ -423,12 +414,7 @@ def login():
 
 @app.route("/dashboard")
 def dashboard():
-    """
-    Render authenticated dashboard with history + setup form.
 
-    Inputs: authenticated session cookie.
-    Returns: dashboard HTML or redirect to login.
-    """
     user = current_user()
     if user is None:
         return redirect(url_for("login"))
@@ -445,12 +431,7 @@ def dashboard():
 
 @app.route("/session", methods=["GET"])
 def session_start():
-    """
-    Render live session page from dashboard-selected setup values.
 
-    Inputs: query string ('topic', 'audience', 'tone', 'duration').
-    Returns: session HTML if valid, otherwise redirect to dashboard.
-    """
     user = current_user()
     if user is None:
         return redirect(url_for("login"))
@@ -482,7 +463,7 @@ def session_start():
     )
 
 
-# ── API processing pipeline ────────────────────────────────────────────────
+# API processing -----------------------------------------------------------------
 
 @app.route("/complete-session", methods=["POST"])
 def complete_session():
@@ -508,12 +489,16 @@ def complete_session():
 
     if not topic or len(topic) > 150:
         return jsonify({"success": False, "error": "Invalid topic."}), 400
+    
     if audience not in valid_audiences:
         return jsonify({"success": False, "error": "Invalid audience."}), 400
+    
     if tone not in valid_tones:
         return jsonify({"success": False, "error": "Invalid tone."}), 400
+    
     if not duration.isdigit() or int(duration) <= 0:
         return jsonify({"success": False, "error": "Invalid duration."}), 400
+    
     if audio is None or audio.filename == "":
         return jsonify({"success": False, "error": "No audio file received."}), 400
 
@@ -540,7 +525,7 @@ def complete_session():
     api_key = os.getenv("ASSEMBLYAI_API_KEY")
     try:
         transcript_payload = transcribe_audio_file(file_path, api_key)
-    except Exception as e:
+    except Exception:
         logging.exception("Transcription failed")
         return jsonify({
             "success": False,
@@ -566,15 +551,13 @@ def complete_session():
             "error": "Scoring failed. Please try again.",
         }), 500
 
-    # 5) Generate structured coaching feedback with Cohere (deterministic fallback
-    #    is handled inside the service to keep response shape stable on API issues).
+    # 5) Generate structured coaching feedback with Cohere.
     feedback = generate_feedback_json(
         topic, audience, tone, duration_int, transcript_text,
         scores, scores["raw_metrics"], scores["low_sample_flags"],
     )
 
-    # 6) Persist everything in MySQL: session row + config + scores + feedback +
-    #    transcript artifacts. Storage is transactional in persistence helper.
+    # 6) Persist everything in MySQL: session row + config + scores + feedback + transcript artifacts
     try:
         session_id = persist_completed_communication_session(
             user_id=user["user_id"],
@@ -600,12 +583,7 @@ def complete_session():
 
 @app.route("/results")
 def results():
-    """
-    Render one saved session's results.
 
-    Inputs: query string 'session_id' and authenticated user session.
-    Returns: results HTML or redirect to dashboard when invalid/inaccessible.
-    """
     user = current_user()
     if user is None:
         return redirect(url_for("login"))
