@@ -123,6 +123,39 @@ def get_recent_communication_sessions(user_id, limit=5):
     return results
 
 
+def get_communication_score_history(user_id, limit=20):
+    """Return chronological score history for chart rendering."""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """
+        SELECT s.session_id, s.score, s.start_time
+        FROM sessions s
+        WHERE s.user_id = %s
+          AND s.mode = 'Communication'
+          AND s.score IS NOT NULL
+        ORDER BY s.start_time ASC
+        LIMIT %s
+        """,
+        (user_id, limit),
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    history = []
+    for row in rows:
+        start_time = row["start_time"]
+        history.append({
+            "session_id": row["session_id"],
+            "score": int(row["score"]),
+            "date_label": (
+                start_time.strftime("%b %d") if start_time else "Unknown date"
+            ),
+        })
+    return history
+
+
 def get_communication_session_result(session_id, user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -336,10 +369,12 @@ def dashboard():
         return redirect(url_for("login"))
 
     recent_sessions = get_recent_communication_sessions(user["user_id"], limit=5)
+    score_history = get_communication_score_history(user["user_id"], limit=20)
     return render_template(
         "dashboard.html",
         username=user["username"],
         recent_sessions=recent_sessions,
+        score_history=score_history,
     )
 
 

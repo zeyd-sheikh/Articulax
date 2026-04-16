@@ -20,19 +20,14 @@
     <div class="card chart-card">
         <div class="card-header">
             <h2>Score Over Time</h2>
-            <div class="filter-tabs">
-                <button class="filter-tab">Week</button>
-                <button class="filter-tab">Month</button>
-                <button class="filter-tab">Six Months</button>
-                <button class="filter-tab">Year</button>
-                <button class="filter-tab active">All Time</button>
-            </div>
+            <p class="subtext">All Time</p>
         </div>
 
         <div class="chart-placeholder">
             <div class="chart-y-label">Score</div>
-            <div class="chart-box">
-                <div class="chart-line"></div>
+            <div class="chart-box" id="score_chart_box">
+                <svg id="score_chart_svg" class="score-chart-svg" viewBox="0 0 100 100" aria-label="Score trend chart"></svg>
+                <p id="score_chart_empty" class="empty-text chart-empty-text" hidden>Complete at least 2 sessions to see your score trend.</p>
             </div>
             <div class="chart-x-label">Date</div>
         </div>
@@ -64,6 +59,9 @@
         {% endif %}
     </div>
 </section>
+
+<script id="score_history_data" type="application/json">{{ score_history|tojson }}</script>
+<script src="{{ url_for('static', filename='js/dashboard_chart.js') }}" defer></script>
 
 
 <section class="setup-section">
