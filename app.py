@@ -77,7 +77,8 @@ def get_user_by_username(username):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        "SELECT user_id, username, account_password FROM users WHERE username = %s",
+        "SELECT user_id, username, first_name, last_name, account_password "
+        "FROM users WHERE username = %s",
         (username,),
     )
     user = cursor.fetchone()
@@ -87,10 +88,15 @@ def get_user_by_username(username):
 
 
 def current_user():
-    """Return minimal authenticated user context from session cookie."""
+    """Return authenticated user context from session cookie."""
     if "user_id" not in session:
         return None
-    return {"user_id": session["user_id"], "username": session["username"]}
+    return {
+        "user_id": session["user_id"],
+        "username": session["username"],
+        "first_name": session.get("first_name", ""),
+        "last_name": session.get("last_name", ""),
+    }
 
 
 # MIME to file extension  -------------------------------------------------------
@@ -407,6 +413,8 @@ def login():
 
         session["user_id"] = user["user_id"]
         session["username"] = user["username"]
+        session["first_name"] = user["first_name"]
+        session["last_name"] = user["last_name"]
         return redirect(url_for("dashboard"))
 
     return render_template("login.html", error=None)
@@ -421,9 +429,16 @@ def dashboard():
 
     recent_sessions = get_recent_communication_sessions(user["user_id"], limit=5)
     score_history = get_communication_score_history(user["user_id"], limit=20)
+    fn = (user.get("first_name") or "").strip()
+    ln = (user.get("last_name") or "").strip()
+    if not fn and not ln:
+        dash_first, dash_last = user["username"], ""
+    else:
+        dash_first, dash_last = fn, ln
     return render_template(
         "dashboard.html",
-        username=user["username"],
+        first_name=dash_first,
+        last_name=dash_last,
         recent_sessions=recent_sessions,
         score_history=score_history,
     )

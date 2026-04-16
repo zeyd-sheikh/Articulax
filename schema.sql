@@ -1,3 +1,5 @@
+-- Single schema file: for upgrades, drop the database (or use a fresh DB) and re-run this script.
+-- Example: mysql -u root -p < schema.sql
 CREATE DATABASE IF NOT EXISTS articulax;
 USE articulax;
 

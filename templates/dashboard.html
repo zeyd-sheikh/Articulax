@@ -7,7 +7,7 @@
 <section class="page-header">
     <div>
         <h1>Dashboard</h1>
-        <p class="subtext">Welcome back, {{ username }}. Track your communication practice and start a new session.</p>
+        <p class="subtext">Welcome back, {{ first_name }}{% if last_name %} {{ last_name }}{% endif %}. Track your communication practice and start a new session.</p>
     </div>
 </section>
 

@@ -60,9 +60,6 @@ Articulax-main/
 ├── .gitignore                          ← Git exclusion rules
 ├── PROJECT_BREAKDOWN.md                ← This file
 │
-├── migrations/
-│   └── final_phase.sql                 ← ALTER TABLE migration for existing databases
-│
 ├── services/
 │   ├── __init__.py                     ← Empty file that makes services/ a Python package
 │   ├── text_analysis.py                ← Deterministic NLP helpers (tokenization, fillers, readability, etc.)
@@ -140,15 +137,9 @@ This installs six packages: `Flask`, `Werkzeug`, `python-dotenv`, `mysql-connect
 /usr/local/mysql/bin/mysql -u root -p < schema.sql
 ```
 
-This creates the `articulax` database and all 7 tables from scratch with the correct columns and constraints.
+This creates the `articulax` database and all 7 tables from scratch with the correct columns and constraints (including `raw_metrics_json` and per-skill feedback columns on a fresh install).
 
-If you already have the database from an earlier version of the project, run the migration instead:
-
-```bash
-/usr/local/mysql/bin/mysql -u root -p < migrations/final_phase.sql
-```
-
-The migration adds `raw_metrics_json` to `session_artifacts` and the five per-skill feedback columns to `com_session_feedback`.
+If you need to align an older local database with the current schema, drop the database and re-run the command above, or run `DROP DATABASE articulax;` then `mysql ... < schema.sql` again.
 
 ```bash
 # 5. Edit .env if your MySQL credentials differ
@@ -164,7 +155,7 @@ The server starts at `http://127.0.0.1:5000` in debug mode with auto-reload enab
 
 ## 5. Environment Variables
 
-All environment variables live in `.env` at the project root. They are loaded once at application startup by `load_dotenv()` on line 34 of `app.py`. Every variable is read via `os.getenv()` wherever it's needed.
+All environment variables live in `.env` at the project root. They are loaded once at application startup by `load_dotenv()` on line 33 of `app.py`. Every variable is read via `os.getenv()` wherever it's needed.
 
 | Variable | Example Value | Where It's Used |
 |---|---|---|
@@ -331,11 +322,11 @@ Authentication uses Flask's built-in `session` object, which is a cryptographica
 
 ### Registration Flow
 
-**Route:** `POST /register` (handled by `register()` in `app.py` lines 349–389)
+**Route:** `POST /register` (handled by `register()` in `app.py` lines 356–391)
 
 1. The form in `register.html` submits six fields via POST: `first_name`, `last_name`, `email`, `username`, `password`, `confirm_password`
 2. **Client-side validation** (`static/js/register.js`): Before the form submits, JavaScript checks if `password === confirm_password`. If not, it prevents submission and shows an `alert("Passwords do not match.")`
-3. **Server-side validation** (`app.py` lines 365–371):
+3. **Server-side validation** (`app.py` lines 367–373):
    - All six fields must be non-empty
    - `password` must equal `confirm_password`
    - Neither `email` nor `username` can already exist in the `users` table (checked by `user_exists()` which runs `SELECT user_id FROM users WHERE email = %s OR username = %s`)
@@ -347,19 +338,20 @@ Authentication uses Flask's built-in `session` object, which is a cryptographica
 
 ### Login Flow
 
-**Route:** `POST /login` (handled by `login()` in `app.py` lines 392–421)
+**Route:** `POST /login` (handled by `login()` in `app.py` lines 394–420)
 
 1. The form in `login.html` submits `username` and `password` via POST
 2. **Client-side validation** (`static/js/login.js`): Checks that the password field is not empty. If it is, prevents submission and shows `alert("Password is required.")`
 3. **Server-side validation**:
    - Both fields must be non-empty
-   - `get_user_by_username(username)` runs `SELECT user_id, username, account_password FROM users WHERE username = %s`
+   - `get_user_by_username(username)` runs `SELECT user_id, username, first_name, last_name, account_password FROM users WHERE username = %s`
    - If no user found → error "Invalid username or password."
    - `check_password_hash(user["account_password"], password)` verifies the submitted password against the stored scrypt hash
    - If hash doesn't match → error "Invalid username or password." (same message to prevent username enumeration)
 4. On success:
    - `session["user_id"] = user["user_id"]` — stores the user's database ID in the Flask session cookie
    - `session["username"] = user["username"]` — stores the username
+   - `session["first_name"]` and `session["last_name"]` — stored for display (e.g. dashboard greeting)
    - Redirects to `/dashboard`
 
 ### Session Cookie Mechanics
@@ -372,7 +364,12 @@ Flask's `session` is a dictionary that gets serialized, signed with `SECRET_KEY`
 def current_user():
     if "user_id" not in session:
         return None
-    return {"user_id": session["user_id"], "username": session["username"]}
+    return {
+        "user_id": session["user_id"],
+        "username": session["username"],
+        "first_name": session.get("first_name", ""),
+        "last_name": session.get("last_name", ""),
+    }
 ```
 
 Every protected route calls `current_user()` first. If it returns `None`, the user is not logged in:
@@ -381,7 +378,7 @@ Every protected route calls `current_user()` first. If it returns `None`, the us
 
 ### Logout
 
-**Route:** `POST /logout` (line 624)
+**Route:** `POST /logout` (line 611)
 
 `session.clear()` removes all data from the session cookie, then redirects to `/login`. The logout button in the nav bar is a `<form method="POST">` with a submit button, not a simple link, because it performs a state-changing action.
 
@@ -415,7 +412,7 @@ GET /           → renders home.html
 GET /about      → renders about.html
 GET /register   → renders register.html
 GET /login      → renders login.html
-GET /dashboard  → renders dashboard.html   (with username, recent_sessions, score_history)
+GET /dashboard  → renders dashboard.html   (with first_name, last_name, recent_sessions, score_history)
 GET /session    → renders session.html      (with topic, audience, tone, duration)
 GET /results    → renders results.html      (with result dict from 5-table JOIN)
 ```
@@ -452,8 +449,8 @@ GET /results    → renders results.html      (with result dict from 5-table JOI
    ORDER BY s.start_time ASC
    LIMIT %s
    ```
-3. The template `dashboard.html` renders three sections:
-   - **Mode tabs** at the top (Communication active, Interview and Presentation disabled)
+3. The template `dashboard.html` renders a **page header** (welcome using `first_name` and `last_name`), then **mode tabs**, the **dashboard top** (chart + recent sessions), and the **setup form**:
+   - **Mode tabs** (Communication active, Interview and Presentation disabled)
    - **Dashboard top area**: an SVG Score Over Time chart (left, 2fr) and a Recent Sessions list (right, 1fr). Each recent session is a clickable `<a>` link to `/results?session_id=<id>`
    - **Setup form** at the bottom: topic text input, three `<select>` dropdowns (audience, tone, duration), and a "Continue to Session" submit button
 4. The setup form uses `method="GET"` and `action="{{ url_for('session_start') }}"`, so submitting produces a URL like: `/session?topic=Transportation&audience=General&tone=Casual&duration=1`
@@ -669,7 +666,7 @@ return jsonify({"success": True, "session_id": session_id})
 
 ## 10. File-by-File Code Walkthrough
 
-### `app.py` — The Flask Application (632 lines)
+### `app.py` — The Flask Application (619 lines)
 
 This is the central file. It contains the Flask app, all routes, database functions, and the orchestration logic.
 
@@ -691,8 +688,8 @@ Opens a new MySQL connection using credentials from environment variables. Every
 
 **Lines 56–88 — Auth helpers:**
 - `user_exists(email, username)` — checks for duplicate email or username during registration
-- `get_user_by_username(username)` — fetches user row for login verification
-- `current_user()` — returns `{user_id, username}` dict or `None`
+- `get_user_by_username(username)` — fetches user row for login verification (includes `first_name`, `last_name`)
+- `current_user()` — returns `{user_id, username, first_name, last_name}` dict or `None`
 
 **Lines 93–103 — `extension_for_mime()`:**
 Maps MIME type strings to file extensions. Falls back to `.webm` for unknown types.
@@ -863,15 +860,9 @@ The heart of the scoring system. All numeric scores are computed here — the LL
 
 See Section 11 for the complete formula-by-formula breakdown.
 
-### `schema.sql` (88 lines)
+### `schema.sql`
 
-Creates the `articulax` database and all 7 tables. Used for fresh installations. Includes all CHECK constraints, FOREIGN KEYs, and DEFAULT values.
-
-### `migrations/final_phase.sql` (11 lines)
-
-An ALTER TABLE migration for databases that already exist from an earlier version:
-- Adds `raw_metrics_json LONGTEXT NULL` to `session_artifacts`
-- Adds five `TEXT NULL` feedback columns to `com_session_feedback`
+Creates the `articulax` database and all 7 tables. This is the only schema source: run it for new setups or after resetting the database. It already includes `session_artifacts.raw_metrics_json` and all per-skill columns on `com_session_feedback`.
 
 ### `requirements.txt` (6 lines)
 
@@ -921,13 +912,14 @@ Login form with 2 inputs: username and password. Loads `login.js` for client-sid
 ### `templates/dashboard.html` (126 lines)
 
 Three sections:
-1. **Mode tabs**: Communication (active), Interview (disabled), Presentation (disabled)
-2. **Dashboard top** (grid: 2fr chart + 1fr recent):
+1. **Page header**: greets the user with **first name and last name** from the session (`Welcome back, {{ first_name }} {{ last_name }}.`)
+2. **Mode tabs**: Communication (active), Interview (disabled), Presentation (disabled)
+3. **Dashboard top** (grid: 2fr chart + 1fr recent):
    - Score trend chart rendered via SVG
    - Embedded `score_history` JSON script payload
    - "All Time" only label (filter tabs removed by design choice)
    - Recent sessions list: iterates `{% for item in recent_sessions %}`, each item is an `<a>` link to `/results?session_id=<id>` showing topic, date, score
-3. **Setup form**: `<form method="GET" action="{{ url_for('session_start') }}">` with topic text input, 3 dropdowns (audience, tone, duration), submit button
+4. **Setup form**: `<form method="GET" action="{{ url_for('session_start') }}">` with topic text input, 3 dropdowns (audience, tone, duration), submit button
 
 ### `static/js/dashboard_chart.js` (104 lines)
 
