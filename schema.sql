@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS session_artifacts (
     session_id INT NOT NULL UNIQUE,
     transcript_text TEXT NOT NULL,
     audio_file_path TEXT NOT NULL,
-    FOREIGN KEY (session_id) 
+    raw_metrics_json LONGTEXT NULL,
+    FOREIGN KEY (session_id)
     REFERENCES sessions(session_id)
 );
 
@@ -65,7 +66,7 @@ CREATE TABLE IF NOT EXISTS com_session_scores (
     structure_score INT NOT NULL,
     relevance_score INT NOT NULL,
     vocabulary_score INT NOT NULL,
-    FOREIGN KEY (session_id) 
+    FOREIGN KEY (session_id)
     REFERENCES com_sessions(session_id),
     CHECK (clarity_score >= 0 AND clarity_score <= 100),
     CHECK (confidence_score >= 0 AND confidence_score <= 100),
@@ -77,6 +78,11 @@ CREATE TABLE IF NOT EXISTS com_session_scores (
 CREATE TABLE IF NOT EXISTS com_session_feedback (
     session_id INT PRIMARY KEY,
     feedback TEXT,
-    FOREIGN KEY (session_id) 
+    clarity_feedback TEXT NULL,
+    confidence_feedback TEXT NULL,
+    structure_feedback TEXT NULL,
+    relevance_feedback TEXT NULL,
+    vocabulary_feedback TEXT NULL,
+    FOREIGN KEY (session_id)
     REFERENCES com_sessions(session_id)
 );
