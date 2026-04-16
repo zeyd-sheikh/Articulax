@@ -1,0 +1,6 @@
+Flask
+Werkzeug
+python-dotenv
+mysql-connector-python
+requests
+cohere

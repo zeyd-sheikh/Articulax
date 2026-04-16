@@ -1,11 +1,36 @@
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import (
+    Flask, render_template, request, redirect, url_for,
+    session, jsonify,
+)
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+from pathlib import Path
 import os
+import json
+import uuid
+import logging
+import traceback
 import mysql.connector
+
+from services.transcription_service import transcribe_audio_file
+from services.scoring_service import score_communication_session
+from services.cohere_service import generate_feedback_json
 
 load_dotenv()
 
+# ── App setup ───────────────────────────────────────────────────────────────
+
+BASE_DIR = Path(__file__).resolve().parent
+UPLOAD_DIR = BASE_DIR / "uploads" / "audio"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY")
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+
+
+# ── Database ────────────────────────────────────────────────────────────────
 
 def get_db_connection():
     return mysql.connector.connect(
@@ -13,233 +38,116 @@ def get_db_connection():
         port=int(os.getenv("DB_PORT", 3306)),
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME")
+        database=os.getenv("DB_NAME"),
     )
 
 
-app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY")
-
+# ── Auth helpers ────────────────────────────────────────────────────────────
 
 def user_exists(email, username):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-
-    query = """
-        SELECT user_id
-        FROM users
-        WHERE email = %s OR username = %s
-    """
-    cursor.execute(query, (email, username))
+    cursor.execute(
+        "SELECT user_id FROM users WHERE email = %s OR username = %s",
+        (email, username),
+    )
     user = cursor.fetchone()
-
     cursor.close()
     conn.close()
-
     return user is not None
 
 
 def get_user_by_username(username):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-
-    query = """
-        SELECT user_id, username, account_password
-        FROM users
-        WHERE username = %s
-    """
-    cursor.execute(query, (username,))
+    cursor.execute(
+        "SELECT user_id, username, account_password FROM users WHERE username = %s",
+        (username,),
+    )
     user = cursor.fetchone()
-
     cursor.close()
     conn.close()
-
     return user
 
 
 def current_user():
     if "user_id" not in session:
         return None
+    return {"user_id": session["user_id"], "username": session["username"]}
 
-    return {
-        "user_id": session["user_id"],
-        "username": session["username"]
+
+# ── MIME → file extension ───────────────────────────────────────────────────
+
+def extension_for_mime(mime_type: str) -> str:
+    mapping = {
+        "audio/webm": ".webm",
+        "audio/webm;codecs=opus": ".webm",
+        "audio/ogg": ".ogg",
+        "audio/ogg;codecs=opus": ".ogg",
+        "audio/mp4": ".mp4",
+        "audio/mpeg": ".mp3",
+        "video/webm": ".webm",
     }
+    return mapping.get(mime_type, ".webm")
 
+
+# ── Session queries ─────────────────────────────────────────────────────────
 
 def get_recent_communication_sessions(user_id, limit=5):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-
-    query = """
-        SELECT
-            s.session_id,
-            cs.topic,
-            s.score,
-            s.start_time
+    cursor.execute(
+        """
+        SELECT s.session_id, cs.topic, s.score, s.start_time
         FROM sessions s
-        JOIN com_sessions cs
-            ON s.session_id = cs.session_id
-        WHERE s.user_id = %s
-          AND s.mode = 'Communication'
+        JOIN com_sessions cs ON s.session_id = cs.session_id
+        WHERE s.user_id = %s AND s.mode = 'Communication'
         ORDER BY s.start_time DESC
         LIMIT %s
-    """
-    cursor.execute(query, (user_id, limit))
+        """,
+        (user_id, limit),
+    )
     rows = cursor.fetchall()
-
     cursor.close()
     conn.close()
 
-    recent_sessions = []
+    results = []
     for row in rows:
         start_time = row["start_time"]
-        formatted_date = start_time.strftime("%Y-%m-%d") if start_time else "No date"
-
-        recent_sessions.append({
+        results.append({
             "session_id": row["session_id"],
             "topic": row["topic"],
             "score": row["score"] if row["score"] is not None else "--",
-            "date": formatted_date
+            "date": start_time.strftime("%Y-%m-%d") if start_time else "No date",
         })
-
-    return recent_sessions
-
-
-def generate_placeholder_scores(topic, audience, tone, duration):
-    duration_value = int(duration)
-
-    vocabulary = min(100, 70 + duration_value * 2)
-    relevance = 85
-    confidence = 76 if tone == "Casual" else 80
-    register = 82 if audience == "Professional" else 78
-    clarity = 84
-    structure = 81
-
-    overall_score = round(
-        (clarity + confidence + structure + relevance + vocabulary) / 5
-    )
-
-    feedback = (
-        f"You spoke on '{topic}' for a {audience.lower()} audience using a {tone.lower()} tone. "
-        "Your response was relevant and reasonably structured. "
-        "Try improving confidence, reducing filler words, and making transitions smoother."
-    )
-
-    return {
-        "overall_score": overall_score,
-        "clarity": clarity,
-        "confidence": confidence,
-        "structure": structure,
-        "relevance": relevance,
-        "vocabulary": vocabulary,
-        "register": register,
-        "feedback": feedback
-    }
-
-
-def create_communication_session(user_id, topic, audience, tone, duration):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    try:
-        generated = generate_placeholder_scores(topic, audience, tone, duration)
-
-        session_insert_query = """
-            INSERT INTO sessions (user_id, mode, score)
-            VALUES (%s, 'Communication', %s)
-        """
-        cursor.execute(session_insert_query, (user_id, generated["overall_score"]))
-        new_session_id = cursor.lastrowid
-
-        com_session_insert_query = """
-            INSERT INTO com_sessions (session_id, topic, audience, tone, duration)
-            VALUES (%s, %s, %s, %s, %s)
-        """
-        cursor.execute(
-            com_session_insert_query,
-            (new_session_id, topic, audience, tone, int(duration))
-        )
-
-        scores_insert_query = """
-            INSERT INTO com_session_scores (
-                session_id,
-                clarity_score,
-                confidence_score,
-                structure_score,
-                relevance_score,
-                vocabulary_score
-            )
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(
-            scores_insert_query,
-            (
-                new_session_id,
-                generated["clarity"],
-                generated["confidence"],
-                generated["structure"],
-                generated["relevance"],
-                generated["vocabulary"]
-            )
-        )
-
-        feedback_insert_query = """
-            INSERT INTO com_session_feedback (session_id, feedback)
-            VALUES (%s, %s)
-        """
-        cursor.execute(
-            feedback_insert_query,
-            (new_session_id, generated["feedback"])
-        )
-
-        conn.commit()
-        return new_session_id
-
-    except mysql.connector.Error:
-        conn.rollback()
-        raise
-
-    finally:
-        cursor.close()
-        conn.close()
+    return results
 
 
 def get_communication_session_result(session_id, user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-
-    query = """
+    cursor.execute(
+        """
         SELECT
-            s.session_id,
-            s.mode,
-            s.score AS overall_score,
-            s.start_time,
-            cs.topic,
-            cs.audience,
-            cs.tone,
-            cs.duration,
-            css.clarity_score,
-            css.confidence_score,
-            css.structure_score,
-            css.relevance_score,
-            css.vocabulary_score,
-            cf.feedback
+            s.session_id, s.mode, s.score AS overall_score, s.start_time,
+            cs.topic, cs.audience, cs.tone, cs.duration,
+            css.clarity_score, css.confidence_score,
+            css.structure_score, css.relevance_score, css.vocabulary_score,
+            cf.feedback,
+            cf.clarity_feedback, cf.confidence_feedback,
+            cf.structure_feedback, cf.relevance_feedback, cf.vocabulary_feedback,
+            sa.transcript_text, sa.audio_file_path
         FROM sessions s
-        JOIN com_sessions cs
-            ON s.session_id = cs.session_id
-        LEFT JOIN com_session_scores css
-            ON cs.session_id = css.session_id
-        LEFT JOIN com_session_feedback cf
-            ON cs.session_id = cf.session_id
-        WHERE s.session_id = %s
-          AND s.user_id = %s
-          AND s.mode = 'Communication'
+        JOIN com_sessions cs ON s.session_id = cs.session_id
+        LEFT JOIN com_session_scores css ON cs.session_id = css.session_id
+        LEFT JOIN com_session_feedback cf ON cs.session_id = cf.session_id
+        LEFT JOIN session_artifacts sa ON s.session_id = sa.session_id
+        WHERE s.session_id = %s AND s.user_id = %s AND s.mode = 'Communication'
         LIMIT 1
-    """
-    cursor.execute(query, (session_id, user_id))
+        """,
+        (session_id, user_id),
+    )
     row = cursor.fetchone()
-
     cursor.close()
     conn.close()
 
@@ -247,27 +155,106 @@ def get_communication_session_result(session_id, user_id):
         return None
 
     start_time = row["start_time"]
-    formatted_date = start_time.strftime("%Y-%m-%d %H:%M") if start_time else "Latest Session"
-
-    register_score = 82 if row["audience"] == "Professional" else 78
+    formatted_date = (
+        start_time.strftime("%Y-%m-%d %H:%M") if start_time else "Latest Session"
+    )
 
     return {
         "session_id": row["session_id"],
         "topic": row["topic"],
+        "audience": row["audience"],
+        "tone": row["tone"],
+        "duration": row["duration"],
         "date": formatted_date,
         "mode": row["mode"],
         "overall_score": row["overall_score"] if row["overall_score"] is not None else 0,
-        "vocabulary": row["vocabulary_score"] if row["vocabulary_score"] is not None else 0,
-        "relevance": row["relevance_score"] if row["relevance_score"] is not None else 0,
+        "clarity": row["clarity_score"] if row["clarity_score"] is not None else 0,
         "confidence": row["confidence_score"] if row["confidence_score"] is not None else 0,
-        "register": register_score,
-        "feedback": row["feedback"] if row["feedback"] else "No feedback available yet.",
-        "transcript": (
-            "Transcript not available yet. "
-            "Audio recording and transcript storage will be integrated later."
-        )
+        "structure": row["structure_score"] if row["structure_score"] is not None else 0,
+        "relevance": row["relevance_score"] if row["relevance_score"] is not None else 0,
+        "vocabulary": row["vocabulary_score"] if row["vocabulary_score"] is not None else 0,
+        "feedback": row["feedback"] or "No feedback available yet.",
+        "clarity_feedback": row["clarity_feedback"] or "",
+        "confidence_feedback": row["confidence_feedback"] or "",
+        "structure_feedback": row["structure_feedback"] or "",
+        "relevance_feedback": row["relevance_feedback"] or "",
+        "vocabulary_feedback": row["vocabulary_feedback"] or "",
+        "transcript": row["transcript_text"] or "Transcript not available.",
     }
 
+
+# ── DB persistence (single transaction) ────────────────────────────────────
+
+def persist_completed_communication_session(
+    user_id, topic, audience, tone, duration,
+    audio_file_path, transcript_text,
+    scores, feedback, raw_metrics,
+):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "INSERT INTO sessions (user_id, mode, score) VALUES (%s, 'Communication', %s)",
+            (user_id, scores["overall_score"]),
+        )
+        session_id = cursor.lastrowid
+
+        cursor.execute(
+            "INSERT INTO com_sessions (session_id, topic, audience, tone, duration) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (session_id, topic, audience, tone, int(duration)),
+        )
+
+        cursor.execute(
+            "INSERT INTO com_session_scores "
+            "(session_id, clarity_score, confidence_score, structure_score, "
+            "relevance_score, vocabulary_score) VALUES (%s, %s, %s, %s, %s, %s)",
+            (
+                session_id,
+                scores["clarity"],
+                scores["confidence"],
+                scores["structure"],
+                scores["relevance"],
+                scores["vocabulary"],
+            ),
+        )
+
+        cursor.execute(
+            "INSERT INTO com_session_feedback "
+            "(session_id, feedback, clarity_feedback, confidence_feedback, "
+            "structure_feedback, relevance_feedback, vocabulary_feedback) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (
+                session_id,
+                feedback.get("overall_feedback", ""),
+                feedback.get("clarity_feedback", ""),
+                feedback.get("confidence_feedback", ""),
+                feedback.get("structure_feedback", ""),
+                feedback.get("relevance_feedback", ""),
+                feedback.get("vocabulary_feedback", ""),
+            ),
+        )
+
+        cursor.execute(
+            "INSERT INTO session_artifacts "
+            "(session_id, transcript_text, audio_file_path, raw_metrics_json) "
+            "VALUES (%s, %s, %s, %s)",
+            (session_id, transcript_text, audio_file_path, json.dumps(raw_metrics)),
+        )
+
+        conn.commit()
+        return session_id
+
+    except mysql.connector.Error:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ── Routes ──────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def home():
@@ -290,8 +277,7 @@ def register():
         confirm_password = request.form.get("confirm_password", "").strip()
 
         error = None
-
-        if not first_name or not last_name or not email or not username or not password or not confirm_password:
+        if not all([first_name, last_name, email, username, password, confirm_password]):
             error = "All fields are required."
         elif password != confirm_password:
             error = "Passwords do not match."
@@ -302,20 +288,16 @@ def register():
             return render_template("register.html", error=error)
 
         hashed_password = generate_password_hash(password)
-
         conn = get_db_connection()
         cursor = conn.cursor()
-
-        insert_query = """
-            INSERT INTO users (first_name, last_name, email, username, account_password)
-            VALUES (%s, %s, %s, %s, %s)
-        """
-        cursor.execute(insert_query, (first_name, last_name, email, username, hashed_password))
+        cursor.execute(
+            "INSERT INTO users (first_name, last_name, email, username, account_password) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (first_name, last_name, email, username, hashed_password),
+        )
         conn.commit()
-
         cursor.close()
         conn.close()
-
         return redirect(url_for("login"))
 
     return render_template("register.html", error=None)
@@ -328,12 +310,10 @@ def login():
         password = request.form.get("password", "").strip()
 
         error = None
-
         if not username or not password:
             error = "Username and password are required."
         else:
             user = get_user_by_username(username)
-
             if user is None:
                 error = "Invalid username or password."
             elif not check_password_hash(user["account_password"], password):
@@ -344,7 +324,6 @@ def login():
 
         session["user_id"] = user["user_id"]
         session["username"] = user["username"]
-
         return redirect(url_for("dashboard"))
 
     return render_template("login.html", error=None)
@@ -353,12 +332,10 @@ def login():
 @app.route("/dashboard")
 def dashboard():
     user = current_user()
-
     if user is None:
         return redirect(url_for("login"))
 
     recent_sessions = get_recent_communication_sessions(user["user_id"], limit=5)
-
     return render_template(
         "dashboard.html",
         username=user["username"],
@@ -369,7 +346,6 @@ def dashboard():
 @app.route("/session", methods=["GET"])
 def session_start():
     user = current_user()
-
     if user is None:
         return redirect(url_for("login"))
 
@@ -396,24 +372,126 @@ def session_start():
         topic=topic,
         audience=audience,
         tone=tone,
-        duration=duration
+        duration=duration,
     )
+
+
+@app.route("/complete-session", methods=["POST"])
+def complete_session():
+    user = current_user()
+    if user is None:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+    topic = request.form.get("topic", "").strip()
+    audience = request.form.get("audience", "").strip()
+    tone = request.form.get("tone", "").strip()
+    duration = request.form.get("duration", "").strip()
+    audio = request.files.get("audio")
+
+    valid_audiences = {"Kids", "General", "Professional"}
+    valid_tones = {"Formal", "Persuasive", "Casual"}
+
+    if not topic or len(topic) > 150:
+        return jsonify({"success": False, "error": "Invalid topic."}), 400
+    if audience not in valid_audiences:
+        return jsonify({"success": False, "error": "Invalid audience."}), 400
+    if tone not in valid_tones:
+        return jsonify({"success": False, "error": "Invalid tone."}), 400
+    if not duration.isdigit() or int(duration) <= 0:
+        return jsonify({"success": False, "error": "Invalid duration."}), 400
+    if audio is None or audio.filename == "":
+        return jsonify({"success": False, "error": "No audio file received."}), 400
+
+    duration_int = int(duration)
+
+    # Save audio to disk
+    mime = audio.content_type or "audio/webm"
+    ext = extension_for_mime(mime)
+    filename = f"{user['user_id']}_{uuid.uuid4().hex}{ext}"
+    safe_name = secure_filename(filename)
+    file_path = str(UPLOAD_DIR / safe_name)
+
+    try:
+        audio.save(file_path)
+    except Exception:
+        logging.exception("Failed to save audio file")
+        return jsonify({"success": False, "error": "Failed to save audio file."}), 500
+
+    if os.path.getsize(file_path) == 0:
+        os.remove(file_path)
+        return jsonify({"success": False, "error": "Audio file is empty."}), 400
+
+    # Transcribe
+    api_key = os.getenv("ASSEMBLYAI_API_KEY")
+    try:
+        transcript_payload = transcribe_audio_file(file_path, api_key)
+    except Exception as e:
+        logging.exception("Transcription failed")
+        return jsonify({
+            "success": False,
+            "error": "We could not process your recording. Please try again.",
+        }), 502
+
+    transcript_text = transcript_payload.get("text", "").strip()
+    if not transcript_text or len(transcript_text) < 5:
+        return jsonify({
+            "success": False,
+            "error": "No speech was detected clearly enough to score this session.",
+        }), 422
+
+    # Score
+    try:
+        scores = score_communication_session(
+            topic, audience, tone, duration_int, transcript_payload,
+        )
+    except Exception:
+        logging.exception("Scoring failed")
+        return jsonify({
+            "success": False,
+            "error": "Scoring failed. Please try again.",
+        }), 500
+
+    # Generate feedback
+    feedback = generate_feedback_json(
+        topic, audience, tone, duration_int, transcript_text,
+        scores, scores["raw_metrics"], scores["low_sample_flags"],
+    )
+
+    # Persist
+    try:
+        session_id = persist_completed_communication_session(
+            user_id=user["user_id"],
+            topic=topic,
+            audience=audience,
+            tone=tone,
+            duration=duration_int,
+            audio_file_path=file_path,
+            transcript_text=transcript_text,
+            scores=scores,
+            feedback=feedback,
+            raw_metrics=scores["raw_metrics"],
+        )
+    except Exception:
+        logging.exception("Failed to save session to database")
+        return jsonify({
+            "success": False,
+            "error": "Failed to save session results.",
+        }), 500
+
+    return jsonify({"success": True, "session_id": session_id})
 
 
 @app.route("/results")
 def results():
     user = current_user()
-
     if user is None:
         return redirect(url_for("login"))
 
     session_id = request.args.get("session_id", "").strip()
-
     if not session_id.isdigit():
         return redirect(url_for("dashboard"))
 
     result = get_communication_session_result(int(session_id), user["user_id"])
-
     if result is None:
         return redirect(url_for("dashboard"))
 
