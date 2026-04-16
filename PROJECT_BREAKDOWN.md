@@ -164,7 +164,7 @@ The server starts at `http://127.0.0.1:5000` in debug mode with auto-reload enab
 
 ## 5. Environment Variables
 
-All environment variables live in `.env` at the project root. They are loaded once at application startup by `load_dotenv()` on line 20 of `app.py`. Every variable is read via `os.getenv()` wherever it's needed.
+All environment variables live in `.env` at the project root. They are loaded once at application startup by `load_dotenv()` on line 34 of `app.py`. Every variable is read via `os.getenv()` wherever it's needed.
 
 | Variable | Example Value | Where It's Used |
 |---|---|---|
@@ -331,11 +331,11 @@ Authentication uses Flask's built-in `session` object, which is a cryptographica
 
 ### Registration Flow
 
-**Route:** `POST /register` (handled by `register()` in `app.py` lines 269–303)
+**Route:** `POST /register` (handled by `register()` in `app.py` lines 349–389)
 
 1. The form in `register.html` submits six fields via POST: `first_name`, `last_name`, `email`, `username`, `password`, `confirm_password`
 2. **Client-side validation** (`static/js/register.js`): Before the form submits, JavaScript checks if `password === confirm_password`. If not, it prevents submission and shows an `alert("Passwords do not match.")`
-3. **Server-side validation** (`app.py` lines 280–285):
+3. **Server-side validation** (`app.py` lines 365–371):
    - All six fields must be non-empty
    - `password` must equal `confirm_password`
    - Neither `email` nor `username` can already exist in the `users` table (checked by `user_exists()` which runs `SELECT user_id FROM users WHERE email = %s OR username = %s`)
@@ -347,7 +347,7 @@ Authentication uses Flask's built-in `session` object, which is a cryptographica
 
 ### Login Flow
 
-**Route:** `POST /login` (handled by `login()` in `app.py` lines 306–329)
+**Route:** `POST /login` (handled by `login()` in `app.py` lines 392–421)
 
 1. The form in `login.html` submits `username` and `password` via POST
 2. **Client-side validation** (`static/js/login.js`): Checks that the password field is not empty. If it is, prevents submission and shows `alert("Password is required.")`
@@ -381,7 +381,7 @@ Every protected route calls `current_user()` first. If it returns `None`, the us
 
 ### Logout
 
-**Route:** `POST /logout` (line 501)
+**Route:** `POST /logout` (line 624)
 
 `session.clear()` removes all data from the session cookie, then redirects to `/login`. The logout button in the nav bar is a `<form method="POST">` with a submit button, not a simple link, because it performs a state-changing action.
 
@@ -485,20 +485,20 @@ GET /results    → renders results.html      (with result dict from 5-table JOI
 
 All browser-side logic lives in `static/js/microphone.js`, loaded with `defer` at the bottom of `session.html`.
 
-9. **Page initialization** (lines 260–274):
+9. **Page initialization** (lines 272–286):
    - `setInitialTimer()` reads the duration from `#session_duration`, multiplies by 60, and displays it as `MM:SS`
    - `showPreSessionButtons()` shows: Enable Microphone, Start Session (disabled), Back to Dashboard; hides Cancel Session
    - Event listeners are attached to the three buttons
 
-10. **User clicks "Enable Microphone"** → `requestMicPermission()` (lines 98–118):
+10. **User clicks "Enable Microphone"** → `requestMicPermission()` (lines 100–121):
     - Calls `navigator.mediaDevices.getUserMedia({ audio: true })`
     - On success: stores the `MediaStream` in `stream`, sets mic status to "Microphone ready.", enables the Start button, disables the Enable button
     - On failure: shows appropriate error message ("permission denied", "no microphone found", or "could not access")
 
-11. **User clicks "Start Session"** → `beginSession()` (lines 121–178):
+11. **User clicks "Start Session"** → `beginSession()` (lines 124–184):
     - Guards: returns if `stream` is null or `sessionStarted` is already true
     - Sets `isCanceled = false`, clears `recordedChunks = []`
-    - **MIME type selection** via `chooseSupportedMimeType()` (lines 26–39): tests in order `audio/webm;codecs=opus`, `audio/webm`, `audio/ogg;codecs=opus`, `audio/mp4` using `MediaRecorder.isTypeSupported()`. Returns the first supported type, or `null` if none
+    - **MIME type selection** via `chooseSupportedMimeType()` (lines 27–40): tests in order `audio/webm;codecs=opus`, `audio/webm`, `audio/ogg;codecs=opus`, `audio/mp4` using `MediaRecorder.isTypeSupported()`. Returns the first supported type, or `null` if none
     - Creates `new MediaRecorder(stream, { mimeType: chosenMimeType })`. If that throws (some browsers reject certain types), falls back to `new MediaRecorder(stream)` with no explicit type
     - Attaches two event handlers:
       - `dataavailable`: pushes each `event.data` chunk into `recordedChunks[]`
@@ -509,7 +509,7 @@ All browser-side logic lives in `static/js/microphone.js`, loaded with `defer` a
 
 ### Phase 4: Timer Expiry → Automatic Upload
 
-12. **Each second** the interval fires (lines 161–177):
+12. **Each second** the interval fires (lines 166–182):
     - Decrements `secondsRemaining` by 1
     - Updates the timer display with `formatTime()`
     - **When it reaches 0:**
@@ -519,7 +519,7 @@ All browser-side logic lives in `static/js/microphone.js`, loaded with `defer` a
       - Calls `mediaRecorder.stop()` — this triggers the `stop` event
       - Calls `stopMediaTracks()` — stops all tracks on the MediaStream and sets `stream = null`, releasing the microphone
 
-13. **The `stop` event fires** → `handleRecordingComplete()` (lines 180–204):
+13. **The `stop` event fires** → `handleRecordingComplete()` (lines 186–211):
     - **Cancel check**: if `isCanceled` is `true`, returns immediately without uploading (this is how cancel prevents upload — see Phase 5)
     - **Empty check**: if `recordedChunks` is empty, shows error "No audio was recorded", resets to pre-session state
     - Builds a `Blob` from all chunks: `new Blob(recordedChunks, { type: mimeForBlob })`
@@ -527,7 +527,7 @@ All browser-side logic lives in `static/js/microphone.js`, loaded with `defer` a
     - Calls `showProcessingState()` — hides Cancel button, shows "Processing your session... This may take a little while."
     - Calls `uploadCompletedSession(blob, mimeForBlob)`
 
-14. **`uploadCompletedSession()`** (lines 206–241):
+14. **`uploadCompletedSession()`** (lines 213–253):
     - Determines file extension from MIME (`.webm`, `.ogg`, or `.mp4`)
     - Creates a filename like `session_1713200000000.webm`
     - Builds a `FormData` object with 5 fields:
@@ -547,7 +547,7 @@ All browser-side logic lives in `static/js/microphone.js`, loaded with `defer` a
 
 If the user clicks "Cancel Session" during recording:
 
-15. `cancelSession()` (lines 244–256):
+15. `cancelSession()` (lines 255–268):
     - Sets `isCanceled = true` — this is the critical flag
     - Calls `stopCountdown()`
     - Calls `mediaRecorder.stop()` — this fires the `stop` event, which calls `handleRecordingComplete()`
@@ -555,20 +555,20 @@ If the user clicks "Cancel Session" during recording:
     - Sets `sessionStarted = false`, clears `recordedChunks`
     - Redirects to `/dashboard`
 
-16. When `handleRecordingComplete()` fires (from the `stop` event), it sees `isCanceled === true` on line 181 and **returns immediately** without building a Blob or uploading. No data is sent to the server. No database rows are created.
+16. When `handleRecordingComplete()` fires (from the `stop` event), it sees `isCanceled === true` on line 187 and **returns immediately** without building a Blob or uploading. No data is sent to the server. No database rows are created.
 
 ### Phase 6: Server-Side Processing
 
-The `POST /complete-session` route in `app.py` (lines 379–481) runs synchronously — the user waits for the entire pipeline to complete.
+The `POST /complete-session` route in `app.py` (lines 487–598) runs synchronously — the user waits for the entire pipeline to complete.
 
-#### Step 6a — Authentication check (line 381–383)
+#### Step 6a — Authentication check (lines 495–497)
 ```python
 user = current_user()
 if user is None:
     return jsonify({"success": False, "error": "Unauthorized"}), 401
 ```
 
-#### Step 6b — Server-side validation (lines 385–403)
+#### Step 6b — Server-side validation (lines 500–518)
 Re-validates every field even though the browser validated them too:
 - `topic`: must be non-empty and ≤150 characters
 - `audience`: must be in `{"Kids", "General", "Professional"}`
@@ -578,14 +578,14 @@ Re-validates every field even though the browser validated them too:
 
 Each validation failure returns a specific 400 JSON error.
 
-#### Step 6c — Save audio file to disk (lines 407–422)
+#### Step 6c — Save audio file to disk (lines 522–537)
 1. Reads the MIME type from `audio.content_type`
 2. Maps it to a file extension via `extension_for_mime()` (e.g., `audio/webm` → `.webm`)
 3. Generates a unique filename: `{user_id}_{uuid4_hex}.webm` (e.g., `1_a3f8c921b4e04d..webm`)
 4. Sanitizes with `secure_filename()` and saves to `uploads/audio/`
 5. Checks that the saved file is non-zero bytes; if empty, deletes it and returns a 400 error
 
-#### Step 6d — Transcription via AssemblyAI (lines 424–440)
+#### Step 6d — Transcription via AssemblyAI (lines 539–555)
 Calls `transcribe_audio_file(file_path, api_key)` from `services/transcription_service.py`. This function:
 1. Uploads the audio bytes to `POST https://api.assemblyai.com/v2/upload` → receives an `upload_url`
 2. Submits a transcription job to `POST /v2/transcript` with `{ audio_url, speech_models: ["universal-3-pro", "universal-2"], language_detection: true }` → receives a `transcript_id`
@@ -595,7 +595,7 @@ Calls `transcribe_audio_file(file_path, api_key)` from `services/transcription_s
 If transcription fails → logged with `logging.exception()` → returns 502 JSON error.
 If transcript text is empty or under 5 characters → returns 422 "No speech was detected."
 
-#### Step 6e — Scoring (lines 442–452)
+#### Step 6e — Scoring (lines 557–567)
 Calls `score_communication_session(topic, audience, tone, duration, transcript_payload)` from `services/scoring_service.py`. Detailed in Section 11.
 
 Returns:
@@ -613,14 +613,14 @@ Returns:
 }
 ```
 
-#### Step 6f — Feedback generation via Cohere (lines 454–458)
+#### Step 6f — Feedback generation via Cohere (lines 569–574)
 Calls `generate_feedback_json(topic, audience, tone, duration, transcript_text, scores, raw_metrics, low_sample_flags)` from `services/cohere_service.py`. Detailed in Section 12.
 
 Returns a dict with keys: `overall_feedback`, `clarity_feedback`, `confidence_feedback`, `structure_feedback`, `relevance_feedback`, `vocabulary_feedback`, `strengths`, `improvements`.
 
 If Cohere fails for any reason, falls back to deterministic Python feedback.
 
-#### Step 6g — Database persistence (lines 460–481)
+#### Step 6g — Database persistence (lines 578–598)
 Calls `persist_completed_communication_session()` which opens a database connection and runs 5 INSERTs in one transaction:
 
 1. `INSERT INTO sessions (user_id, mode, score)` → captures `session_id = cursor.lastrowid`
@@ -631,7 +631,7 @@ Calls `persist_completed_communication_session()` which opens a database connect
 
 Then `conn.commit()`. If any insert fails → `conn.rollback()` → 500 JSON error, no partial data.
 
-#### Step 6h — Response (line 481)
+#### Step 6h — Response (line 598)
 ```python
 return jsonify({"success": True, "session_id": session_id})
 ```
@@ -640,9 +640,9 @@ return jsonify({"success": True, "session_id": session_id})
 
 17. JavaScript receives the JSON, sees `data.success === true`, and redirects: `window.location.href = "/results?session_id=" + data.session_id`
 
-18. The `GET /results` route (lines 484–498):
+18. The `GET /results` route (lines 601–621):
     - Validates `session_id` is a digit string
-    - Calls `get_communication_session_result(int(session_id), user["user_id"])` which runs a 5-table JOIN query (lines 129–147):
+    - Calls `get_communication_session_result(int(session_id), user["user_id"])` which runs a 5-table JOIN query (lines 196–214):
       ```sql
       SELECT s.*, cs.*, css.*, cf.*, sa.transcript_text, sa.audio_file_path
       FROM sessions s
@@ -669,63 +669,63 @@ return jsonify({"success": True, "session_id": session_id})
 
 ## 10. File-by-File Code Walkthrough
 
-### `app.py` — The Flask Application (544 lines)
+### `app.py` — The Flask Application (632 lines)
 
 This is the central file. It contains the Flask app, all routes, database functions, and the orchestration logic.
 
-**Lines 1–19 — Imports:**
+**Lines 10–32 — Imports:**
 - Flask components: `Flask`, `render_template`, `request`, `redirect`, `url_for`, `session`, `jsonify`
 - Werkzeug: `generate_password_hash`, `check_password_hash`, `secure_filename`
 - Standard library: `os`, `json`, `uuid`, `logging`, `traceback`, `pathlib.Path`
 - Internal services: `transcribe_audio_file`, `score_communication_session`, `generate_feedback_json`
 - `load_dotenv()` is called to load `.env`
 
-**Lines 22–30 — App setup:**
+**Lines 30–38 — App setup:**
 - `BASE_DIR`: resolved path to the project root
 - `UPLOAD_DIR`: `uploads/audio/` — auto-created with `mkdir(parents=True, exist_ok=True)`
 - `app.secret_key` from `SECRET_KEY` env var
 - `MAX_CONTENT_LENGTH = 50 * 1024 * 1024` (50 MB) — Flask rejects uploads larger than this
 
-**Lines 35–42 — `get_db_connection()`:**
+**Lines 43–51 — `get_db_connection()`:**
 Opens a new MySQL connection using credentials from environment variables. Every database function opens its own connection, uses it, and closes it. There is no connection pool.
 
-**Lines 47–77 — Auth helpers:**
+**Lines 56–88 — Auth helpers:**
 - `user_exists(email, username)` — checks for duplicate email or username during registration
 - `get_user_by_username(username)` — fetches user row for login verification
 - `current_user()` — returns `{user_id, username}` dict or `None`
 
-**Lines 81–91 — `extension_for_mime()`:**
+**Lines 93–103 — `extension_for_mime()`:**
 Maps MIME type strings to file extensions. Falls back to `.webm` for unknown types.
 
-**Lines 96–123 — `get_recent_communication_sessions()`:**
+**Lines 108–141 — `get_recent_communication_sessions()`:**
 Dashboard query. JOINs `sessions` and `com_sessions`, filters by user and mode, orders by `start_time DESC`, returns up to 5 items.
 
-**Lines 126–183 — `get_communication_session_result()`:**
+**Lines 183–250 — `get_communication_session_result()`:**
 Results page query. JOINs all 5 tables with LEFT JOINs (scores/feedback/artifacts might not exist for edge cases). Returns a dict with every field the results template needs. The `AND s.user_id = %s` clause enforces data isolation.
 
-**Lines 188–254 — `persist_completed_communication_session()`:**
+**Lines 255–332 — `persist_completed_communication_session()`:**
 Transactional write. Opens connection, runs 5 INSERTs in order, commits. On failure, rolls back and re-raises. Always closes cursor and connection in `finally`.
 
-**Lines 259–266 — Public routes:**
+**Lines 337–346 — Public routes:**
 `GET /` → `home.html`, `GET /about` → `about.html`. No auth required.
 
-**Lines 269–329 — Auth routes:**
+**Lines 349–421 — Auth routes:**
 `GET/POST /register` and `GET/POST /login`. Both validate server-side, display errors via template re-render, and redirect on success.
 
-**Lines 332–376 — Dashboard and Session routes:**
+**Lines 424–482 — Dashboard and Session routes:**
 `GET /dashboard` queries recent sessions and renders the setup form. `GET /session` validates query params and renders the live session page. Neither writes to the database.
 
-**Lines 379–481 — `POST /complete-session`:**
+**Lines 487–598 — `POST /complete-session`:**
 The core pipeline. See Phase 6 in Section 9 above for the complete walkthrough.
 
-**Lines 484–504 — Results and Logout:**
+**Lines 601–628 — Results and Logout:**
 `GET /results` loads from DB and renders. `POST /logout` clears the session.
 
 ### `services/__init__.py` (0 lines)
 
 Empty file. Its sole purpose is to make `services/` a Python package so that `from services.text_analysis import ...` works.
 
-### `services/text_analysis.py` (325 lines)
+### `services/text_analysis.py` (357 lines)
 
 Contains all deterministic text-analysis helpers used by the scoring engine. No API calls, no external NLP libraries — only Python `re` and `math`.
 
@@ -771,16 +771,16 @@ Contains all deterministic text-analysis helpers used by the scoring engine. No 
 
 **`cosine_similarity(vec_a, vec_b)`**: Pure Python dot product divided by the product of magnitudes, using `math.sqrt`. No numpy dependency. Used by `cohere_service.py` to compare embedding vectors.
 
-### `services/transcription_service.py` (102 lines)
+### `services/transcription_service.py` (117 lines)
 
 Handles all communication with AssemblyAI's REST API using the `requests` library. No AssemblyAI SDK is used — all calls are explicit HTTP requests.
 
-**`upload_audio_to_assemblyai(file_path, api_key)`** (lines 12–24):
+**`upload_audio_to_assemblyai(file_path, api_key)`** (lines 12–29):
 - Opens the local file in binary mode
 - Sends `POST https://api.assemblyai.com/v2/upload` with `authorization: <api_key>` header and the file bytes as the request body
 - Returns the `upload_url` from the JSON response (a CDN URL that AssemblyAI can read from)
 
-**`submit_transcription_job(upload_url, api_key)`** (lines 27–45):
+**`submit_transcription_job(upload_url, api_key)`** (lines 30–52):
 - Sends `POST /v2/transcript` with JSON payload:
   ```json
   {
@@ -793,13 +793,13 @@ Handles all communication with AssemblyAI's REST API using the `requests` librar
 - `language_detection: true` lets AssemblyAI auto-detect the spoken language rather than assuming English.
 - Returns the `transcript_id`
 
-**`poll_transcription_result(transcript_id, api_key)`** (lines 48–73):
+**`poll_transcription_result(transcript_id, api_key)`** (lines 53–86):
 - Polls `GET /v2/transcript/{id}` every 3 seconds
 - If `status == "completed"` → returns the full JSON response
 - If `status == "error"` → raises `RuntimeError` with the error message
 - If 300 seconds pass without completion → raises `TimeoutError`
 
-**`transcribe_audio_file(file_path, api_key)`** (lines 77–101):
+**`transcribe_audio_file(file_path, api_key)`** (lines 87–117):
 - End-to-end orchestrator: upload → submit → poll → normalize
 - Normalizes the raw AssemblyAI response into a consistent dict:
   ```python
@@ -816,13 +816,13 @@ Handles all communication with AssemblyAI's REST API using the `requests` librar
   ```
 - Word timestamps are in milliseconds. `start` is when the word begins, `end` is when it ends.
 
-### `services/cohere_service.py` (210 lines)
+### `services/cohere_service.py` (223 lines)
 
 Uses the Cohere V2 Python SDK for two distinct purposes: semantic embeddings and structured feedback generation.
 
 **`get_cohere_client()`**: Creates a `cohere.ClientV2` using the `COHERE_API_KEY` from environment variables.
 
-**`embed_topic_and_transcript(topic, transcript)`** (lines 17–44):
+**`embed_topic_and_transcript(topic, transcript)`** (lines 18–72):
 - Embeds the topic string with `input_type="search_query"` and the transcript (first 2048 chars) with `input_type="search_document"` using `embed-v4.0` model
 - Both use `embedding_types=["float"]` and `output_dimension=1024`
 - The Cohere V2 API uses a structured input format: `inputs=[{"content": [{"type": "text", "text": ...}]}]`
@@ -830,12 +830,12 @@ Uses the Cohere V2 Python SDK for two distinct purposes: semantic embeddings and
 - Computes cosine similarity using the pure-Python function from `text_analysis.py`
 - Returns a float in [0.0, 1.0]
 
-**`generate_feedback_json(...)`** (lines 69–89):
+**`generate_feedback_json(...)`** (lines 73–97):
 - Wraps `_call_cohere_feedback()` in a try/except
 - If Cohere fails for **any** reason (network, rate limit, parsing, validation), catches the exception and calls `_deterministic_fallback()` instead
 - This means the session **always completes** even if Cohere is down
 
-**`_call_cohere_feedback(...)`** (lines 92–153):
+**`_call_cohere_feedback(...)`** (lines 98–175):
 - Builds a detailed prompt that includes: topic, audience, tone, duration, first 1500 chars of transcript, all numeric scores, key metrics (WPM, fillers, transitions, lexical diversity), and any low-sample-size flags
 - Uses `response_format` with a JSON schema to enforce the exact output structure:
   ```json
@@ -852,18 +852,18 @@ Uses the Cohere V2 Python SDK for two distinct purposes: semantic embeddings and
   ```
 - Parses the response text as JSON and validates all required keys are present
 
-**`_deterministic_fallback(scores, topic, audience, tone)`** (lines 166–209):
+**`_deterministic_fallback(scores, topic, audience, tone)`** (lines 176–223):
 - Generates feedback without any API call, based purely on the numeric scores
 - For each skill: score ≥ 85 → "strong, keep refining"; score ≥ 65 → "solid, room for improvement"; below → "needs work"
 - Builds strengths list from skills scoring ≥ 75 and improvements list from skills below 75
 
-### `services/scoring_service.py` (375 lines)
+### `services/scoring_service.py` (439 lines)
 
 The heart of the scoring system. All numeric scores are computed here — the LLM never decides a number.
 
 See Section 11 for the complete formula-by-formula breakdown.
 
-### `schema.sql` (89 lines)
+### `schema.sql` (88 lines)
 
 Creates the `articulax` database and all 7 tables. Used for fresh installations. Includes all CHECK constraints, FOREIGN KEYs, and DEFAULT values.
 
@@ -886,7 +886,7 @@ cohere
 
 No version pins — installs latest compatible versions. `requests` is used by `transcription_service.py` for AssemblyAI REST calls. `cohere` is the V2 SDK used by `cohere_service.py`.
 
-### `templates/base.html` (37 lines)
+### `templates/base.html` (36 lines)
 
 The shared layout template. All other templates extend it with `{% extends 'base.html' %}`.
 
@@ -898,7 +898,7 @@ The shared layout template. All other templates extend it with `{% extends 'base
   - Uses `{% if session.get('user_id') %}` to decide which nav items to show
 - `<main>`: `{% block body %}{% endblock %}` — content area
 
-### `templates/home.html` (39 lines)
+### `templates/home.html` (38 lines)
 
 The public landing page. Extends `base.html`.
 
@@ -906,19 +906,19 @@ The public landing page. Extends `base.html`.
 - If logged in: "Go to Dashboard" button. If not: "Get Started" (register) and "Login" buttons.
 - Info grid: three cards for Communication (active), Interview (disabled, 65% opacity), Presentation (disabled)
 
-### `templates/about.html` (32 lines)
+### `templates/about.html` (31 lines)
 
 Public how-it-works page. Three steps: Choose a mode → Start a session → Review feedback.
 
-### `templates/register.html` (30 lines)
+### `templates/register.html` (29 lines)
 
 Registration form with 6 inputs: first name, last name, email, username, password, confirm password. All are `required`. Server-side errors displayed via `{% if error %}<p class="error-text">{{ error }}</p>{% endif %}`. Loads `register.js` for client-side password matching.
 
-### `templates/login.html` (25 lines)
+### `templates/login.html` (24 lines)
 
 Login form with 2 inputs: username and password. Loads `login.js` for client-side empty-password check.
 
-### `templates/dashboard.html` (123 lines)
+### `templates/dashboard.html` (126 lines)
 
 Three sections:
 1. **Mode tabs**: Communication (active), Interview (disabled), Presentation (disabled)
@@ -929,7 +929,7 @@ Three sections:
    - Recent sessions list: iterates `{% for item in recent_sessions %}`, each item is an `<a>` link to `/results?session_id=<id>` showing topic, date, score
 3. **Setup form**: `<form method="GET" action="{{ url_for('session_start') }}">` with topic text input, 3 dropdowns (audience, tone, duration), submit button
 
-### `static/js/dashboard_chart.js` (105 lines)
+### `static/js/dashboard_chart.js` (104 lines)
 
 Dedicated dashboard chart renderer:
 
@@ -942,27 +942,27 @@ Dedicated dashboard chart renderer:
 - Shows `#score_chart_empty` when fewer than 2 data points are available
 - Uses neutral charcoal palette colors to match the updated visual design
 
-### `templates/session.html` (66 lines)
+### `templates/session.html` (69 lines)
 
 The live recording page. Shows selected settings as read-only, 4 hidden inputs for JS, mic status box, action buttons, error paragraph, and session status card with timer.
 
-### `templates/results.html` (122 lines)
+### `templates/results.html` (125 lines)
 
 Displays: topic heading, date, session details grid (audience/tone/duration), overall score circle, overall feedback, score breakdown (5 metric rows), per-skill feedback section (conditionally rendered if feedback text exists), full transcript in a scrollable box, and two action buttons.
 
-### `static/js/microphone.js` (275 lines)
+### `static/js/microphone.js` (286 lines)
 
 See Phase 3–5 in Section 9 for the complete logic walkthrough.
 
-### `static/js/register.js` (16 lines)
+### `static/js/register.js` (15 lines)
 
 Attaches a `submit` event listener to the registration form. If password !== confirm_password, prevents submission and shows an `alert()`. This is a client-side convenience check — the server validates independently.
 
-### `static/js/login.js` (12 lines)
+### `static/js/login.js` (11 lines)
 
 Attaches a `submit` event listener to the login form. If the password field is empty, prevents submission and shows an `alert()`.
 
-### `static/css/styles.css` (798 lines)
+### `static/css/styles.css` (797 lines)
 
 See Section 15 for the CSS architecture breakdown.
 
@@ -1380,7 +1380,7 @@ Results:
 
 ## 15. CSS Architecture
 
-All styles live in a single file: `static/css/styles.css` (798 lines). There is no preprocessor (Sass/Less), no CSS framework (Bootstrap/Tailwind), and no CSS-in-JS.
+All styles live in a single file: `static/css/styles.css` (797 lines). There is no preprocessor (Sass/Less), no CSS framework (Bootstrap/Tailwind), and no CSS-in-JS.
 
 ### Design system
 
