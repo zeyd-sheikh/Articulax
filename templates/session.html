@@ -3,6 +3,7 @@
 {% block title %}Live Session - Articulax{% endblock %}
 
 {% block body %}
+<!-- Session overview and immutable setup values -->
 <section class="page-header">
     <div>
         <h1>Communication Session</h1>
@@ -17,6 +18,7 @@
             <input type="text" value="{{ topic }}" readonly>
         </div>
 
+        <!-- Hidden inputs consumed by microphone.js for upload payload -->
         <input type="hidden" id="session_topic" value="{{ topic }}">
         <input type="hidden" id="session_audience" value="{{ audience }}">
         <input type="hidden" id="session_tone" value="{{ tone }}">
@@ -44,6 +46,7 @@
             <p id="mic_status" class="mic-status">Microphone not enabled yet.</p>
         </div>
 
+        <!-- Live session controls: mic permission, start, cancel, navigation -->
         <div class="page-actions">
             <button type="button" id="enable_mic_btn" class="secondary-btn">Enable Microphone</button>
             <button type="button" id="start_session_btn" class="primary-btn" disabled>Start Session</button>
@@ -53,6 +56,7 @@
 
         <p id="session_error" class="error-text" hidden></p>
 
+        <!-- Runtime status card updated during countdown/processing -->
         <div class="card session-status-card" id="session_status_box" hidden>
             <p class="mic-label">Session Status</p>
             <p id="session_status_text" class="mic-status">Session not started.</p>

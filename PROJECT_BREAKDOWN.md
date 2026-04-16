@@ -18,6 +18,7 @@
 14. [Data Flow Diagrams](#14-data-flow-diagrams)
 15. [CSS Architecture](#15-css-architecture)
 16. [What raw_metrics_json Stores](#16-what-raw_metrics_json-stores)
+17. [Recent UI and Dashboard Refinements](#17-recent-ui-and-dashboard-refinements)
 
 ---
 
@@ -84,6 +85,7 @@ Articulax-main/
 │   │   └── styles.css                  ← All CSS for the entire application
 │   └── js/
 │       ├── microphone.js               ← Audio recording, timer, upload, cancel logic
+│       ├── dashboard_chart.js          ← SVG score trend rendering from DB-backed score history
 │       ├── register.js                 ← Client-side password match validation
 │       └── login.js                    ← Client-side empty password check
 │
@@ -413,7 +415,7 @@ GET /           → renders home.html
 GET /about      → renders about.html
 GET /register   → renders register.html
 GET /login      → renders login.html
-GET /dashboard  → renders dashboard.html   (with username, recent_sessions)
+GET /dashboard  → renders dashboard.html   (with username, recent_sessions, score_history)
 GET /session    → renders session.html      (with topic, audience, tone, duration)
 GET /results    → renders results.html      (with result dict from 5-table JOIN)
 ```
@@ -427,7 +429,11 @@ GET /results    → renders results.html      (with result dict from 5-table JOI
 ### Phase 1: Setup on the Dashboard
 
 1. User navigates to `/dashboard` (must be logged in, otherwise redirected to `/login`)
-2. The `dashboard()` route calls `get_recent_communication_sessions(user_id, limit=5)` which executes:
+2. The `dashboard()` route calls **two** read queries:
+   - `get_recent_communication_sessions(user_id, limit=5)` for the right-side recent cards
+   - `get_communication_score_history(user_id, limit=20)` for the score chart points (chronological)
+
+   Recent sessions query:
    ```sql
    SELECT s.session_id, cs.topic, s.score, s.start_time
    FROM sessions s
@@ -436,11 +442,26 @@ GET /results    → renders results.html      (with result dict from 5-table JOI
    ORDER BY s.start_time DESC
    LIMIT 5
    ```
+   Score history query:
+   ```sql
+   SELECT s.session_id, s.score, s.start_time
+   FROM sessions s
+   WHERE s.user_id = %s
+     AND s.mode = 'Communication'
+     AND s.score IS NOT NULL
+   ORDER BY s.start_time ASC
+   LIMIT %s
+   ```
 3. The template `dashboard.html` renders three sections:
    - **Mode tabs** at the top (Communication active, Interview and Presentation disabled)
-   - **Dashboard top area**: a Score Over Time chart placeholder (left, 2fr) and a Recent Sessions list (right, 1fr). Each recent session is a clickable `<a>` link to `/results?session_id=<id>`
+   - **Dashboard top area**: an SVG Score Over Time chart (left, 2fr) and a Recent Sessions list (right, 1fr). Each recent session is a clickable `<a>` link to `/results?session_id=<id>`
    - **Setup form** at the bottom: topic text input, three `<select>` dropdowns (audience, tone, duration), and a "Continue to Session" submit button
 4. The setup form uses `method="GET"` and `action="{{ url_for('session_start') }}"`, so submitting produces a URL like: `/session?topic=Transportation&audience=General&tone=Casual&duration=1`
+5. `dashboard.html` embeds `score_history` as JSON in:
+   ```html
+   <script id="score_history_data" type="application/json">{{ score_history|tojson }}</script>
+   ```
+   then loads `static/js/dashboard_chart.js`, which parses the JSON, coerces score values with `Number(item.score)`, and draws the all-time trend into `<svg id="score_chart_svg">`. If fewer than two points exist, it shows the empty-state message.
 
 ### Phase 2: The Live Session Page
 
@@ -648,7 +669,7 @@ return jsonify({"success": True, "session_id": session_id})
 
 ## 10. File-by-File Code Walkthrough
 
-### `app.py` — The Flask Application (509 lines)
+### `app.py` — The Flask Application (544 lines)
 
 This is the central file. It contains the Flask app, all routes, database functions, and the orchestration logic.
 
@@ -897,14 +918,29 @@ Registration form with 6 inputs: first name, last name, email, username, passwor
 
 Login form with 2 inputs: username and password. Loads `login.js` for client-side empty-password check.
 
-### `templates/dashboard.html` (93 lines)
+### `templates/dashboard.html` (123 lines)
 
 Three sections:
 1. **Mode tabs**: Communication (active), Interview (disabled), Presentation (disabled)
 2. **Dashboard top** (grid: 2fr chart + 1fr recent):
-   - Chart placeholder (static CSS illustration)
+   - Score trend chart rendered via SVG
+   - Embedded `score_history` JSON script payload
+   - "All Time" only label (filter tabs removed by design choice)
    - Recent sessions list: iterates `{% for item in recent_sessions %}`, each item is an `<a>` link to `/results?session_id=<id>` showing topic, date, score
 3. **Setup form**: `<form method="GET" action="{{ url_for('session_start') }}">` with topic text input, 3 dropdowns (audience, tone, duration), submit button
+
+### `static/js/dashboard_chart.js` (105 lines)
+
+Dedicated dashboard chart renderer:
+
+- Reads and parses JSON from `#score_history_data`
+- Normalizes score values using `Number(item.score)` before filtering finite values
+- Draws a simple, dependency-free SVG chart:
+  - horizontal grid lines at 0/25/50/75/100
+  - trend polyline
+  - point circles with tooltip titles (`date: score`)
+- Shows `#score_chart_empty` when fewer than 2 data points are available
+- Uses neutral charcoal palette colors to match the updated visual design
 
 ### `templates/session.html` (66 lines)
 
@@ -926,7 +962,7 @@ Attaches a `submit` event listener to the registration form. If password !== con
 
 Attaches a `submit` event listener to the login form. If the password field is empty, prevents submission and shows an `alert()`.
 
-### `static/css/styles.css` (576 lines)
+### `static/css/styles.css` (798 lines)
 
 See Section 15 for the CSS architecture breakdown.
 
@@ -1344,38 +1380,45 @@ Results:
 
 ## 15. CSS Architecture
 
-All styles live in a single file: `static/css/styles.css` (576 lines). There is no preprocessor (Sass/Less), no CSS framework (Bootstrap/Tailwind), and no CSS-in-JS.
+All styles live in a single file: `static/css/styles.css` (798 lines). There is no preprocessor (Sass/Less), no CSS framework (Bootstrap/Tailwind), and no CSS-in-JS.
 
 ### Design system
 
-- **Font**: Arial, Helvetica, sans-serif (system fonts)
-- **Background**: `#f5f7fb` (light gray-blue)
-- **Text**: `#1f2937` (dark gray)
-- **Primary**: `#2563eb` (blue, Tailwind blue-600)
-- **Accent light**: `#eff6ff` (very light blue)
-- **Border**: `#dbe3ef` (light border blue)
-- **Error**: `#b91c1c` (dark red)
-- **Border radius**: 10–16px (rounded corners throughout)
-- **Cards**: white background, 1px border, 16px radius, subtle box-shadow
+- **Font**: system UI stack (`-apple-system`, BlinkMacSystemFont, `"Segoe UI"`, Helvetica, Arial, sans-serif)
+- **Page background**: `#f5f5f7` (very light gray)
+- **Card background**: `#ffffff`
+- **Primary text**: `#1f1f1f`
+- **Heading/primary accent**: `#1f2329` (charcoal)
+- **Secondary text**: `#666a73` / `#4b5059`
+- **Border**: `#d9dde3` / `#e0e3e8`
+- **Primary button**: `#1f2329` (hover: `#111418`)
+- **Muted button**: `#eceff3` with text `#2b3138`
+- **Error tone**: `#a3392b` (muted red)
+- **Border radius**: mostly 10–14px
+- **Cards**: white background, soft border, subtle `0 2px 8px rgba(0,0,0,0.04)` shadow
+- **Theme direction**: light UI with dark accents (not dark mode)
 
 ### Style sections
 
 | Lines | Section | Purpose |
 |---|---|---|
-| 1–6 | Reset | `box-sizing: border-box`, zero margin/padding |
-| 8–18 | Layout | `body` background, `.container` max-width 1150px |
-| 20–62 | Header/Nav | Sticky header, brand styling, nav links |
-| 64–91 | Content/Cards | Page padding, card base styles |
-| 93–136 | Buttons | `.primary-btn`, `.secondary-btn`, `.link-btn` |
-| 137–153 | Info/Feature grid | 3-column grid for homepage cards |
-| 154–191 | Auth forms | Centered card, form inputs |
-| 193–253 | Dashboard | Mode tabs, chart placeholder, filter tabs |
-| 255–319 | Session list | Recent sessions, topic rows |
-| 321–408 | Session form | Setup section, form grid, mic box |
-| 410–455 | Results | Results layout (2fr+1fr grid), score circle, feedback box, metric rows |
-| 457–477 | Responsive | `@media (max-width: 900px)` — grids collapse to single column |
-| 479–499 | Session page | Recent session hover, timer styling |
-| 501–576 | Final phase additions | Error text, session details grid, skill feedback blocks, transcript scroll box |
+| 1–15 | Reset/Base | Global reset, system font stack, light background, base text rendering |
+| 17–77 | Layout + Header/Nav | Sticky header, compact nav spacing, refined link states |
+| 79–114 | Page structure + Card baseline | Section spacing, heading hierarchy, softened cards |
+| 116–170 | Buttons | Unified charcoal primary + muted secondary system |
+| 171–210 | Home/About card grid | Shared informational cards and disabled states |
+| 211–270 | Auth + input controls | Refined spacing, focus rings, read-only field styling |
+| 271–325 | Dashboard tabs and headers | Mode tabs, card headers, typography balance |
+| 326–390 | Chart visuals | Clean chart container and empty-state style |
+| 392–430 | Recent sessions | Clickable card feel with subtle hover feedback |
+| 432–462 | Legacy topic helpers | Retained helpers for compatibility/reuse |
+| 463–532 | Setup + session control panel blocks | Setup area, form grid, microphone status container |
+| 534–653 | Results page payoff styles | Score circle, metric rows, transcript readability |
+| 655–677 | Responsive behavior | Under-900px grid collapsing and header stacking |
+| 679–697 | Live session status + timer | Centered status card and prominent timer |
+| 699–761 | Session details + skill feedback | Report-like detail and feedback formatting |
+| 763–786 | Filter tab utility styles | Kept for optional future use |
+| 788–797 | Session cancel button tone | Muted danger-adjacent style without harsh red |
 
 ### Responsive behavior
 
@@ -1450,3 +1493,69 @@ Every completed session writes a JSON string to `session_artifacts.raw_metrics_j
 | `lexical_diversity` | unique / total content words | Vocabulary: LexicalDiversity |
 | `cohere_similarity` | Cosine similarity from Cohere embeddings | Relevance: PromptSimilarity |
 | `low_sample_flags` | List of warning flags | Communicated to feedback prompt |
+
+---
+
+## 17. Recent UI and Dashboard Refinements
+
+This section documents the latest implementation choices added after the initial final-phase completion.
+
+### 17.1 Dashboard score chart is now data-driven
+
+The dashboard chart is no longer a static visual placeholder. It now renders from real user data:
+
+1. `app.py` adds `get_communication_score_history(user_id, limit=20)`
+2. `dashboard()` passes `score_history` into `dashboard.html`
+3. `dashboard.html` embeds that payload in a JSON script tag (`id="score_history_data"`)
+4. `static/js/dashboard_chart.js` parses, normalizes, and draws the chart in `<svg id="score_chart_svg">`
+
+Why this choice:
+- Preserves CSCB20 simplicity (plain JS + SVG, no chart libraries)
+- Keeps rendering deterministic and easy to explain in a demo
+- Uses only already-saved session scores, so no extra backend complexity
+
+### 17.2 All-time view only (filter buttons removed)
+
+The chart now intentionally presents one scope: **All Time**.
+
+- Week/Month/Six Months/Year tabs were removed from `dashboard.html`
+- Header now shows a plain "All Time" label
+
+Why this choice:
+- Prevents empty/ambiguous filter states in low-data student projects
+- Reduces UI complexity while still giving meaningful trend visibility
+- Matches current product scope (single simple trend chart)
+
+### 17.3 Numeric coercion fix for chart reliability
+
+In `dashboard_chart.js`, `item.score` is explicitly converted via `Number(item.score)` before finite checks.
+
+Why this was necessary:
+- JSON payloads can contain numeric-looking strings
+- `Number.isFinite("80")` is `false`, which previously filtered out valid data points
+- Explicit coercion ensures real sessions appear correctly on the chart
+
+### 17.4 Hidden empty-state rendering fix
+
+`.chart-empty-text[hidden] { display: none; }` ensures the empty message hides correctly when chart data is available.
+
+Why this was necessary:
+- `.chart-empty-text` had explicit `display: flex`
+- Without a `[hidden]` override, browser `hidden` behavior could be visually overridden
+
+### 17.5 Light-theme visual polish choices (charcoal accent)
+
+The app now uses a restrained light theme with dark accents:
+
+- Replaced bright blue accents with charcoal (`#1f2329` / `#111418`)
+- Kept page backgrounds light (`#f5f5f7`) and cards white (`#ffffff`)
+- Unified component styling across dashboard/session/results/auth
+- Refined card borders/shadows, spacing rhythm, and heading hierarchy
+- Styled read-only session fields to look intentionally non-editable
+- Gave cancel action a muted danger-adjacent tone without using harsh red
+
+Constraints respected:
+- No route or workflow changes
+- No JS ID changes for `microphone.js` integration
+- No external CSS frameworks or web fonts
+- No flashy animations; only subtle hover/focus transitions

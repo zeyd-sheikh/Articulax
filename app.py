@@ -1,21 +1,35 @@
-from flask import (
-    Flask, render_template, request, redirect, url_for,
-    session, jsonify,
-)
-from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
-from dotenv import load_dotenv
-from pathlib import Path
-import os
-import json
-import uuid
-import logging
-import traceback
-import mysql.connector
+"""
+Flask entrypoint for Articulax Communication Mode.
 
-from services.transcription_service import transcribe_audio_file
-from services.scoring_service import score_communication_session
-from services.cohere_service import generate_feedback_json
+This module handles:
+- authentication and dashboard rendering
+- communication session lifecycle routes
+- orchestration of transcription, scoring, AI feedback, and persistence
+"""
+
+from flask import (
+    Flask,  # Flask application object and route registration.
+    render_template,  # Render Jinja HTML templates.
+    request,  # Read incoming HTTP form/query/files data.
+    redirect,  # Return redirect responses.
+    url_for,  # Build route URLs by endpoint name.
+    session,  # Access cookie-backed login session data.
+    jsonify,  # Return JSON API responses.
+)
+from werkzeug.security import generate_password_hash, check_password_hash  # Password hashing + verification.
+from werkzeug.utils import secure_filename  # Sanitize uploaded audio filenames.
+from dotenv import load_dotenv  # Load environment variables from .env file.
+from pathlib import Path  # Safe filesystem path construction.
+import os  # Environment access and filesystem utilities.
+import json  # Serialize raw metrics before DB insert.
+import uuid  # Generate unique audio filenames.
+import logging  # Log pipeline failures for debugging.
+import traceback  # Keep traceback import available for debugging workflows.
+import mysql.connector  # MySQL database connection/driver.
+
+from services.transcription_service import transcribe_audio_file  # AssemblyAI transcription pipeline.
+from services.scoring_service import score_communication_session  # Deterministic rubric scoring.
+from services.cohere_service import generate_feedback_json  # Structured coaching feedback generation.
 
 load_dotenv()
 
@@ -33,6 +47,7 @@ app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
 # ── Database ────────────────────────────────────────────────────────────────
 
 def get_db_connection():
+    """Create a MySQL connection using environment-configured credentials."""
     return mysql.connector.connect(
         host=os.getenv("DB_HOST"),
         port=int(os.getenv("DB_PORT", 3306)),
@@ -45,6 +60,7 @@ def get_db_connection():
 # ── Auth helpers ────────────────────────────────────────────────────────────
 
 def user_exists(email, username):
+    """Check if either email or username is already registered."""
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
@@ -58,6 +74,7 @@ def user_exists(email, username):
 
 
 def get_user_by_username(username):
+    """Fetch login fields for a username; returns None when not found."""
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
@@ -71,6 +88,7 @@ def get_user_by_username(username):
 
 
 def current_user():
+    """Return minimal authenticated user context from session cookie."""
     if "user_id" not in session:
         return None
     return {"user_id": session["user_id"], "username": session["username"]}
@@ -94,6 +112,12 @@ def extension_for_mime(mime_type: str) -> str:
 # ── Session queries ─────────────────────────────────────────────────────────
 
 def get_recent_communication_sessions(user_id, limit=5):
+    """
+    Return the latest Communication sessions for dashboard cards.
+
+    Joins 'sessions' with 'com_sessions' to pair each session score/date with
+    its communication metadata (topic, audience, tone, duration).
+    """
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
@@ -157,6 +181,16 @@ def get_communication_score_history(user_id, limit=20):
 
 
 def get_communication_session_result(session_id, user_id):
+    """
+    Return one full result payload for the results page.
+
+    Table relationships used:
+    - 'sessions' (owner, mode, overall score, timestamp)
+    - 'com_sessions' (topic/audience/tone/duration for that session_id)
+    - 'com_session_scores' (dimension-level rubric scores)
+    - 'com_session_feedback' (overall + per-dimension narrative feedback)
+    - 'session_artifacts' (transcript, audio path, raw metrics blob)
+    """
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
@@ -223,22 +257,31 @@ def persist_completed_communication_session(
     audio_file_path, transcript_text,
     scores, feedback, raw_metrics,
 ):
+    """
+    Persist a completed Communication session across all related tables.
+
+    Uses a single transaction so the session is either fully saved everywhere
+    or fully rolled back if any insert fails.
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
+        # Parent session record used by all communication-specific child tables.
         cursor.execute(
             "INSERT INTO sessions (user_id, mode, score) VALUES (%s, 'Communication', %s)",
             (user_id, scores["overall_score"]),
         )
         session_id = cursor.lastrowid
 
+        # Communication configuration captured when user started this session.
         cursor.execute(
             "INSERT INTO com_sessions (session_id, topic, audience, tone, duration) "
             "VALUES (%s, %s, %s, %s, %s)",
             (session_id, topic, audience, tone, int(duration)),
         )
 
+        # Deterministic rubric breakdown (five scored communication dimensions).
         cursor.execute(
             "INSERT INTO com_session_scores "
             "(session_id, clarity_score, confidence_score, structure_score, "
@@ -253,6 +296,7 @@ def persist_completed_communication_session(
             ),
         )
 
+        # AI-generated narrative feedback, stored separately from numeric scores.
         cursor.execute(
             "INSERT INTO com_session_feedback "
             "(session_id, feedback, clarity_feedback, confidence_feedback, "
@@ -269,6 +313,7 @@ def persist_completed_communication_session(
             ),
         )
 
+        # Raw artifacts support review/debugging without recomputing a session.
         cursor.execute(
             "INSERT INTO session_artifacts "
             "(session_id, transcript_text, audio_file_path, raw_metrics_json) "
@@ -291,16 +336,24 @@ def persist_completed_communication_session(
 
 @app.route("/")
 def home():
+    """Render public landing page. Inputs: none. Returns: HTML page."""
     return render_template("home.html")
 
 
 @app.route("/about")
 def about():
+    """Render public About page. Inputs: none. Returns: HTML page."""
     return render_template("about.html")
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    """
+    Handle account registration form.
+
+    Inputs: form fields on POST (name/email/username/password fields).
+    Returns: register page with errors, or redirect to login on success.
+    """
     if request.method == "POST":
         first_name = request.form.get("first_name", "").strip()
         last_name = request.form.get("last_name", "").strip()
@@ -338,6 +391,12 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    """
+    Authenticate a user by username/password.
+
+    Inputs: form fields on POST ('username', 'password').
+    Returns: login page with errors, or redirect to dashboard on success.
+    """
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
@@ -364,6 +423,12 @@ def login():
 
 @app.route("/dashboard")
 def dashboard():
+    """
+    Render authenticated dashboard with history + setup form.
+
+    Inputs: authenticated session cookie.
+    Returns: dashboard HTML or redirect to login.
+    """
     user = current_user()
     if user is None:
         return redirect(url_for("login"))
@@ -380,6 +445,12 @@ def dashboard():
 
 @app.route("/session", methods=["GET"])
 def session_start():
+    """
+    Render live session page from dashboard-selected setup values.
+
+    Inputs: query string ('topic', 'audience', 'tone', 'duration').
+    Returns: session HTML if valid, otherwise redirect to dashboard.
+    """
     user = current_user()
     if user is None:
         return redirect(url_for("login"))
@@ -411,12 +482,21 @@ def session_start():
     )
 
 
+# ── API processing pipeline ────────────────────────────────────────────────
+
 @app.route("/complete-session", methods=["POST"])
 def complete_session():
+    """
+    Complete a communication session from uploaded recording.
+
+    Inputs: multipart form ('audio', 'topic', 'audience', 'tone', 'duration').
+    Returns: JSON success payload with 'session_id', or JSON error payload.
+    """
     user = current_user()
     if user is None:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
 
+    # 1) Validate input payload and guardrails before expensive processing.
     topic = request.form.get("topic", "").strip()
     audience = request.form.get("audience", "").strip()
     tone = request.form.get("tone", "").strip()
@@ -439,7 +519,7 @@ def complete_session():
 
     duration_int = int(duration)
 
-    # Save audio to disk
+    # 2) Save the uploaded audio to disk; extension depends on browser MIME type.
     mime = audio.content_type or "audio/webm"
     ext = extension_for_mime(mime)
     filename = f"{user['user_id']}_{uuid.uuid4().hex}{ext}"
@@ -456,7 +536,7 @@ def complete_session():
         os.remove(file_path)
         return jsonify({"success": False, "error": "Audio file is empty."}), 400
 
-    # Transcribe
+    # 3) Transcribe with AssemblyAI; returns normalized text + word-level timing.
     api_key = os.getenv("ASSEMBLYAI_API_KEY")
     try:
         transcript_payload = transcribe_audio_file(file_path, api_key)
@@ -474,7 +554,7 @@ def complete_session():
             "error": "No speech was detected clearly enough to score this session.",
         }), 422
 
-    # Score
+    # 4) Compute deterministic rubric scores from transcript metrics.
     try:
         scores = score_communication_session(
             topic, audience, tone, duration_int, transcript_payload,
@@ -486,13 +566,15 @@ def complete_session():
             "error": "Scoring failed. Please try again.",
         }), 500
 
-    # Generate feedback
+    # 5) Generate structured coaching feedback with Cohere (deterministic fallback
+    #    is handled inside the service to keep response shape stable on API issues).
     feedback = generate_feedback_json(
         topic, audience, tone, duration_int, transcript_text,
         scores, scores["raw_metrics"], scores["low_sample_flags"],
     )
 
-    # Persist
+    # 6) Persist everything in MySQL: session row + config + scores + feedback +
+    #    transcript artifacts. Storage is transactional in persistence helper.
     try:
         session_id = persist_completed_communication_session(
             user_id=user["user_id"],
@@ -518,6 +600,12 @@ def complete_session():
 
 @app.route("/results")
 def results():
+    """
+    Render one saved session's results.
+
+    Inputs: query string 'session_id' and authenticated user session.
+    Returns: results HTML or redirect to dashboard when invalid/inaccessible.
+    """
     user = current_user()
     if user is None:
         return redirect(url_for("login"))
@@ -535,6 +623,7 @@ def results():
 
 @app.route("/logout", methods=["POST"])
 def logout():
+    """Clear login session. Inputs: none. Returns: redirect to login."""
     session.clear()
     return redirect(url_for("login"))
 

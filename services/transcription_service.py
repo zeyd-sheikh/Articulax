@@ -10,7 +10,10 @@ BASE_URL = "https://api.assemblyai.com"
 
 
 def upload_audio_to_assemblyai(file_path: str, api_key: str) -> str:
-    """Upload a local audio file to AssemblyAI and return the upload URL."""
+    """
+    Step 1: Upload local audio bytes and get a temporary AssemblyAI URL.
+    This URL is then referenced when creating the transcription job.
+    """
     headers = {"authorization": api_key}
 
     with open(file_path, "rb") as f:
@@ -25,7 +28,9 @@ def upload_audio_to_assemblyai(file_path: str, api_key: str) -> str:
 
 
 def submit_transcription_job(upload_url: str, api_key: str) -> str:
-    """Submit a transcription job and return the transcript ID."""
+    """
+    Step 2: Submit transcription request and return transcript job ID.
+    """
     headers = {
         "authorization": api_key,
         "content-type": "application/json",
@@ -48,7 +53,12 @@ def submit_transcription_job(upload_url: str, api_key: str) -> str:
 def poll_transcription_result(transcript_id: str, api_key: str,
                               poll_interval: int = 3,
                               max_wait_seconds: int = 300) -> dict:
-    """Poll until the transcript is completed or an error occurs."""
+    """
+    Step 3: Poll job status until completion or failure.
+
+    AssemblyAI transcription is asynchronous; polling is required because the
+    transcript is not immediately available after job submission.
+    """
     headers = {"authorization": api_key}
     url = f"{BASE_URL}/v2/transcript/{transcript_id}"
     elapsed = 0
@@ -76,8 +86,14 @@ def poll_transcription_result(transcript_id: str, api_key: str,
 
 def transcribe_audio_file(file_path: str, api_key: str) -> dict:
     """
-    End-to-end transcription: upload → submit → poll → normalize.
-    Returns a dict with text, confidence, words list, status, and raw_response.
+    End-to-end flow: upload -> submit -> poll -> normalize.
+
+    Returned payload shape (consumed by scoring pipeline):
+    - text: full transcript string
+    - confidence: overall ASR confidence
+    - words: list of per-word timing/confidence dicts
+    - status: "completed"
+    - raw_response: full AssemblyAI response for traceability
     """
     upload_url = upload_audio_to_assemblyai(file_path, api_key)
     transcript_id = submit_transcription_job(upload_url, api_key)

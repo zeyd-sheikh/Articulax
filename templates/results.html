@@ -3,6 +3,7 @@
 {% block title %}Results - Articulax{% endblock %}
 
 {% block body %}
+<!-- High-level session summary and overall score -->
 <section class="page-header">
     <div>
         <h1>Session Results</h1>
@@ -41,6 +42,7 @@
         </div>
     </div>
 
+    <!-- Numeric rubric breakdown used for quick scoring review -->
     <div class="card score-breakdown">
         <h2>Score Breakdown</h2>
         <div class="metric-row">
@@ -67,6 +69,7 @@
 </section>
 
 {% if result.clarity_feedback or result.confidence_feedback or result.structure_feedback or result.relevance_feedback or result.vocabulary_feedback %}
+<!-- Per-skill feedback paragraphs generated from scoring + AI feedback -->
 <section class="card skill-feedback-section">
     <h2>Skill Feedback</h2>
 
@@ -107,6 +110,7 @@
 </section>
 {% endif %}
 
+<!-- Transcript artifact from the completed recording -->
 <section class="card transcript-card">
     <h2>Transcript</h2>
     <div class="transcript-box">

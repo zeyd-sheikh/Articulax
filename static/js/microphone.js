@@ -13,6 +13,7 @@ const sessionTopicInput = document.getElementById("session_topic");
 const sessionAudienceInput = document.getElementById("session_audience");
 const sessionToneInput = document.getElementById("session_tone");
 
+// Session lifecycle state shared across mic/start/countdown/upload steps.
 let stream = null;
 let mediaRecorder = null;
 let recordedChunks = [];
@@ -24,6 +25,7 @@ let isProcessing = false;
 let isCanceled = false;
 
 function chooseSupportedMimeType() {
+    // Browser-dependent fallback order to maximize MediaRecorder compatibility.
     const types = [
         "audio/webm;codecs=opus",
         "audio/webm",
@@ -96,6 +98,7 @@ function hideError() {
 }
 
 async function requestMicPermission() {
+    // Explicitly request user permission before enabling recording controls.
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         micStatus.textContent = "Microphone is not supported here.";
         return;
@@ -134,12 +137,14 @@ function beginSession() {
     }
 
     try {
+        // Use preferred MIME type when available; fallback keeps behavior stable.
         mediaRecorder = new MediaRecorder(stream, options);
     } catch (e) {
         mediaRecorder = new MediaRecorder(stream);
     }
 
     mediaRecorder.addEventListener("dataavailable", function (event) {
+        // MediaRecorder emits chunks over time; store them for final Blob merge.
         if (event.data && event.data.size > 0) {
             recordedChunks.push(event.data);
         }
@@ -169,6 +174,7 @@ function beginSession() {
             if (mediaRecorder && mediaRecorder.state !== "inactive") {
                 mediaRecorder.stop();
             }
+            // Stop hardware capture once recording window ends.
             stopMediaTracks();
             return;
         }
@@ -189,6 +195,7 @@ function handleRecordingComplete() {
         return;
     }
 
+    // Build one uploadable file from recorded MediaRecorder chunks.
     var mimeForBlob = chosenMimeType || "audio/webm";
     var blob = new Blob(recordedChunks, { type: mimeForBlob });
 
@@ -204,12 +211,15 @@ function handleRecordingComplete() {
 }
 
 async function uploadCompletedSession(blob, mimeType) {
+    // Keep extension aligned with recorded MIME so backend can map correctly.
     var ext = ".webm";
     if (mimeType.indexOf("ogg") !== -1) ext = ".ogg";
     else if (mimeType.indexOf("mp4") !== -1) ext = ".mp4";
 
     var filename = "session_" + Date.now() + ext;
 
+    // POST multipart payload expected by /complete-session route.
+    // Includes immutable setup values plus the recorded audio blob.
     var formData = new FormData();
     formData.append("audio", blob, filename);
     formData.append("topic", sessionTopicInput.value);
@@ -226,6 +236,7 @@ async function uploadCompletedSession(blob, mimeType) {
         var data = await response.json();
 
         if (data.success) {
+            // Backend returns session_id for results lookup and page redirect.
             window.location.href = "/results?session_id=" + data.session_id;
         } else {
             showError(data.error || "Something went wrong. Please try again.");
@@ -242,6 +253,7 @@ async function uploadCompletedSession(blob, mimeType) {
 }
 
 function cancelSession() {
+    // Cancel abandons upload and returns to dashboard immediately.
     isCanceled = true;
     stopCountdown();
 

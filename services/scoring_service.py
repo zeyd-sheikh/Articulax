@@ -1,6 +1,9 @@
 """
 Communication Mode scoring rubric implementation.
-All numeric scores are computed here in Flask — no LLM decides the numbers.
+
+This module is the deterministic scoring rubric used by Articulax.
+All numeric scores are computed from transcript-derived metrics here in Python;
+AI services are used only for feedback text and optional semantic similarity.
 """
 
 from services.text_analysis import (
@@ -39,7 +42,8 @@ def build_base_metrics(topic: str, audience: str, tone: str,
     tokens = tokenize_words(text)
     total_words = len(tokens)
 
-    # Speaking duration from word timestamps
+    # Speaking duration is reconstructed from ASR word timings.
+    # AssemblyAI returns milliseconds; rubric logic uses seconds/minutes.
     if words:
         first_start = words[0].get("start", 0)
         last_end = words[-1].get("end", 0)
@@ -59,30 +63,31 @@ def build_base_metrics(topic: str, audience: str, tone: str,
     else:
         avg_word_confidence = 0.85
 
-    # Pause gaps between consecutive words
+    # Pause detection: gap between end of word N and start of N+1.
     gaps = []
     for i in range(1, len(words)):
         gap_ms = words[i].get("start", 0) - words[i - 1].get("end", 0)
         gaps.append(gap_ms / 1000.0)
 
-    # Clarity long pauses (> 1.2 s)
+    # Clarity rubric tracks long pauses above 1.2s.
     clarity_long_pauses = [g for g in gaps if g > 1.2]
     clarity_long_pause_count = len(clarity_long_pauses)
     clarity_long_pause_seconds = sum(clarity_long_pauses)
 
-    # Confidence: hesitation pauses (0.8–1.5 s) and long pauses (> 1.5 s)
+    # Confidence rubric separates hesitation pauses from longer stalls.
     hesitation_pauses = [g for g in gaps if 0.8 <= g <= 1.5]
     confidence_long_pauses = [g for g in gaps if g > 1.5]
     hesitation_count = len(hesitation_pauses)
     confidence_long_pause_count = len(confidence_long_pauses)
 
-    # WPM
+    # WPM heuristic: total transcript words / speaking minutes.
     wpm = total_words / speaking_minutes if speaking_minutes > 0 else 0
 
-    # Filler words
+    # Filler count combines single-word fillers and common filler phrases.
     filler_count = count_filler_words(text)
 
-    # Continuous speech segments (split at gaps > 0.8 s)
+    # Continuous speech segment length approximates delivery flow confidence.
+    # Segments are split when pauses exceed 0.8s.
     speech_segments = []
     seg_start = None
     for i, w in enumerate(words):
@@ -102,7 +107,7 @@ def build_base_metrics(topic: str, audience: str, tone: str,
         sum(speech_segments) / len(speech_segments) if speech_segments else 0.0
     )
 
-    # Sentences
+    # Sentence boundaries come from punctuation with pause-based fallback.
     sentences = split_sentences(text, words)
     total_sentences = len(sentences)
     sent_lens = sentence_lengths(sentences)
@@ -111,7 +116,7 @@ def build_base_metrics(topic: str, audience: str, tone: str,
     )
     sent_len_stddev = stddev([float(x) for x in sent_lens])
 
-    # Transitions
+    # Transition phrases are a proxy for organization and signposting.
     lower_text = text.lower()
     transition_count = 0
     for phrase in TRANSITION_PHRASES:
@@ -119,18 +124,18 @@ def build_base_metrics(topic: str, audience: str, tone: str,
             re.findall(r'\b' + re.escape(phrase) + r'\b', lower_text)
         )
 
-    # Topic keywords + coverage
+    # Keyword coverage approximates whether speech stayed on topic.
     topic_kws = extract_topic_keywords(topic)
     covered_kw, total_kw = keyword_coverage(topic_kws, text)
     kw_ratio = covered_kw / max(total_kw, 1)
 
-    # Tone
+    # Tone cues estimate alignment with selected communication tone.
     tone_matches, tone_conflicts = tone_alignment_score_parts(text, tone)
 
-    # Readability
+    # Readability estimates audience-appropriate language complexity.
     grade = flesch_kincaid_grade(text)
 
-    # Vocabulary metrics
+    # Vocabulary richness metrics for lexical variety and repetition control.
     c_words = content_words(tokens)
     unique_content = set(c_words)
     total_content = len(c_words)
@@ -183,6 +188,18 @@ def build_base_metrics(topic: str, audience: str, tone: str,
 # ── Individual rubric scorers ──────────────────────────────────────────────
 
 def score_clarity(m: dict) -> float:
+    """
+    Score intelligibility and smooth pacing.
+
+    Inputs:
+    - ASR confidence (how clearly words were recognized)
+    - words-per-minute pace against rubric target
+    - count and duration of long pauses
+
+    Interpretation:
+    Higher score means speech is clearer, appropriately paced, and less broken
+    by long silence.
+    """
     A = m["average_word_confidence"]
     speaking_min = m["speaking_minutes"]
 
@@ -203,9 +220,21 @@ def score_clarity(m: dict) -> float:
 
 
 def score_confidence(m: dict) -> float:
+    """
+    Score delivery confidence from hesitation patterns.
+
+    Inputs:
+    - filler frequency per 100 words
+    - hesitation and long pause rates per minute
+    - average uninterrupted speech segment length
+
+    Interpretation:
+    Higher score reflects steadier flow and fewer hesitation markers.
+    """
     total_words = max(m["total_words"], 1)
     speaking_min = m["speaking_minutes"]
 
+    # Normalize filler usage so short and long transcripts remain comparable.
     f100 = m["filler_words"] * 100 / total_words
     hpm = m["confidence_hesitation_pauses"] / speaking_min if speaking_min > 0 else 0
     lpm = m["confidence_long_pauses"] / speaking_min if speaking_min > 0 else 0
@@ -223,6 +252,17 @@ def score_confidence(m: dict) -> float:
 
 
 def score_structure(m: dict) -> float:
+    """
+    Score organizational clarity of the response.
+
+    Inputs:
+    - transition phrase density
+    - sentence count and average sentence length
+    - sentence-length consistency (stddev)
+
+    Interpretation:
+    Higher score indicates better signposting and more balanced structure.
+    """
     total_words = max(m["total_words"], 1)
     total_sentences = max(m["total_sentences"], 1)
 
@@ -243,6 +283,17 @@ def score_structure(m: dict) -> float:
 
 
 def score_relevance(m: dict, similarity: float) -> float:
+    """
+    Score relevance to prompt and selected tone.
+
+    Inputs:
+    - embedding similarity between topic and transcript
+    - topic keyword coverage ratio
+    - tone cue alignment ratio
+
+    Interpretation:
+    Higher score means the response stays on-topic and matches intended style.
+    """
     kc = m["keyword_coverage_ratio"]
     tone_total = m["tone_matches"] + m["tone_conflicts"]
     ta = m["tone_matches"] / max(tone_total, 1)
@@ -251,7 +302,7 @@ def score_relevance(m: dict, similarity: float) -> float:
     kw_cov = 100 * kc
     tone_align = 100 * ta
 
-    # Fallbacks
+    # Fallbacks keep scoring deterministic even with sparse keyword/tone signals.
     if not m["topic_keywords"]:
         kw_cov = prompt_sim
     if m["tone"] not in ("Formal", "Persuasive", "Casual"):
@@ -263,6 +314,18 @@ def score_relevance(m: dict, similarity: float) -> float:
 
 
 def score_vocabulary(m: dict) -> float:
+    """
+    Score lexical quality and audience fit.
+
+    Inputs:
+    - lexical diversity over content words
+    - repeated non-stopword rate
+    - readability grade distance from audience target band
+
+    Interpretation:
+    Higher score indicates richer vocabulary with less repetition and better
+    complexity calibration for the selected audience.
+    """
     ld = m["lexical_diversity"]
     total_words = max(m["total_words"], 1)
     rep100 = m["repeated_non_stopwords"] * 100 / total_words
@@ -310,7 +373,8 @@ def score_communication_session(
     if m["speaking_seconds"] < 15:
         low_sample_flags.append("very_short_duration")
 
-    # Cohere embeddings for relevance (with fallback)
+    # Cohere embeddings improve semantic relevance, but scoring still remains
+    # deterministic because we fallback to keyword coverage on API failure.
     try:
         similarity = embed_topic_and_transcript(topic, m["transcript_text"])
     except Exception:
@@ -330,7 +394,8 @@ def score_communication_session(
         + vocabulary * 0.10
     )
 
-    # Build raw_metrics for storage/debugging (exclude non-serialisable data)
+    # raw_metrics is persisted in DB to make rubric decisions auditable.
+    # Keep it JSON-serializable for storage in session_artifacts.raw_metrics_json.
     raw_metrics = {
         "total_words": m["total_words"],
         "speaking_seconds": m["speaking_seconds"],

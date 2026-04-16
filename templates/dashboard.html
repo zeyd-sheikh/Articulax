@@ -3,6 +3,7 @@
 {% block title %}Dashboard - Articulax{% endblock %}
 
 {% block body %}
+<!-- Dashboard header and mode tabs -->
 <section class="page-header">
     <div>
         <h1>Dashboard</h1>
@@ -17,6 +18,7 @@
 </section>
 
 <section class="dashboard-top">
+    <!-- Progress chart section -->
     <div class="card chart-card">
         <div class="card-header">
             <h2>Score Over Time</h2>
@@ -33,6 +35,7 @@
         </div>
     </div>
 
+    <!-- Recent sessions quick access -->
     <div class="card recent-card">
         <div class="card-header">
             <h2>Recent Sessions</h2>
@@ -64,6 +67,7 @@
 <script src="{{ url_for('static', filename='js/dashboard_chart.js') }}" defer></script>
 
 
+<!-- Session setup form leading to the live recording page -->
 <section class="setup-section">
     <div class="setup-header">
         <h2>Communication Session Setup</h2>

@@ -9,6 +9,7 @@ from services.text_analysis import cosine_similarity
 
 
 def get_cohere_client():
+    """Create Cohere client from environment key."""
     return cohere.ClientV2(api_key=os.getenv("COHERE_API_KEY"))
 
 
@@ -21,6 +22,8 @@ def embed_topic_and_transcript(topic: str, transcript: str) -> float:
     """
     client = get_cohere_client()
 
+    # Topic is embedded as a "query" so semantic match is evaluated from prompt
+    # intent to delivered content.
     topic_resp = client.embed(
         model="embed-v4.0",
         input_type="search_query",
@@ -29,6 +32,7 @@ def embed_topic_and_transcript(topic: str, transcript: str) -> float:
         output_dimension=1024,
     )
 
+    # Transcript is embedded as a "document"; trim length to keep requests stable.
     transcript_resp = client.embed(
         model="embed-v4.0",
         input_type="search_document",
@@ -78,7 +82,9 @@ def generate_feedback_json(
 ) -> dict:
     """
     Ask Cohere for structured JSON feedback about the session.
-    Falls back to deterministic feedback on any error.
+
+    Deterministic fallback exists to guarantee the app still returns valid
+    feedback payloads if Cohere is unavailable or returns malformed output.
     """
     try:
         return _call_cohere_feedback(
@@ -103,6 +109,8 @@ def _call_cohere_feedback(
             "Keep feedback encouraging despite limited data."
         )
 
+    # Prompt includes rubric scores + key metrics so generated comments align
+    # with deterministic scoring decisions already computed in Flask.
     prompt = f"""You are a speech-coaching assistant for a university course project.
 
 A student just completed a {duration}-minute communication session.
@@ -131,6 +139,7 @@ Key metrics:
 Return JSON only. Provide concise, encouraging, student-friendly feedback.
 Each feedback field should be 1-3 sentences. Strengths and improvements should each have 2-3 items."""
 
+    # Request strict JSON object output to match template expectations.
     response = client.chat(
         model="command-a-03-2025",
         messages=[{"role": "user", "content": prompt}],
@@ -146,6 +155,7 @@ Each feedback field should be 1-3 sentences. Strengths and improvements should e
     text = response.message.content[0].text
     parsed = json.loads(text)
 
+    # Validate all required keys before returning to route layer.
     for key in FEEDBACK_SCHEMA["required"]:
         if key not in parsed:
             raise ValueError(f"Missing key: {key}")
@@ -165,6 +175,10 @@ def _score_comment(name: str, score: int) -> str:
 
 def _deterministic_fallback(scores: dict, topic: str,
                             audience: str, tone: str) -> dict:
+    """
+    Build non-LLM fallback feedback from numeric rubric scores only.
+    Ensures '/complete-session' can succeed even when Cohere fails.
+    """
     overall = scores.get("overall_score", 0)
 
     if overall >= 80:

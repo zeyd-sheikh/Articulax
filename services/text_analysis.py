@@ -76,6 +76,7 @@ def clamp(x: float) -> float:
 
 
 def normalize_text(text: str) -> str:
+    """Lowercase + trim text for simple lexical comparisons."""
     return text.lower().strip()
 
 
@@ -92,13 +93,20 @@ def content_words(tokens: list) -> list:
 # ── Filler words ────────────────────────────────────────────────────────────
 
 def count_filler_words(text: str) -> int:
+    """
+    Count hesitation language used in delivery-confidence scoring.
+
+    Includes multi-word phrases (e.g., "you know") plus single-word fillers.
+    """
     lower = text.lower()
     count = 0
 
+    # Phrase-first pass avoids missing common conversational fillers.
     for phrase in FILLER_PHRASES_MULTI:
         occurrences = len(re.findall(r'\b' + re.escape(phrase) + r'\b', lower))
         count += occurrences
 
+    # Token pass captures short fillers such as "um", "uh", and "like".
     tokens = tokenize_words(lower)
     for token in tokens:
         if token in FILLER_WORDS_SINGLE:
@@ -147,12 +155,14 @@ def split_sentences(text: str, words: list = None) -> list:
 
 
 def sentence_lengths(sentences: list) -> list:
+    """Convert sentence strings into token-count lengths."""
     return [len(tokenize_words(s)) for s in sentences]
 
 
 # ── Statistics ──────────────────────────────────────────────────────────────
 
 def stddev(values: list) -> float:
+    """Population standard deviation used for sentence-length consistency."""
     if len(values) < 2:
         return 0.0
     mean = sum(values) / len(values)
@@ -164,6 +174,14 @@ def stddev(values: list) -> float:
 
 def extract_topic_keywords(topic: str, min_keywords: int = 5,
                            max_keywords: int = 10) -> list:
+    """
+    Build a compact keyword set representing topic intent.
+
+    Strategy:
+    - keep informative unigrams
+    - prioritize informative bigrams for context
+    - pad with extra tokens when topic text is very short
+    """
     tokens = re.findall(r"[a-z]+", topic.lower())
     informative = [t for t in tokens if t not in STOPWORDS and len(t) >= 3]
 
@@ -221,6 +239,12 @@ def _simple_variants(word: str) -> list:
 
 
 def keyword_coverage(topic_keywords: list, transcript_text: str) -> tuple:
+    """
+    Estimate how much of the topic appears in transcript content.
+
+    Counts a keyword as covered by exact phrase match or simple morphological
+    variants of component words.
+    """
     lower = transcript_text.lower()
     covered = 0
     total = len(topic_keywords)
@@ -249,6 +273,10 @@ def keyword_coverage(topic_keywords: list, transcript_text: str) -> tuple:
 # ── Tone alignment ─────────────────────────────────────────────────────────
 
 def tone_alignment_score_parts(transcript_text: str, tone: str) -> tuple:
+    """
+    Count positive and conflicting lexical cues for selected tone.
+    Returned tuple is consumed by relevance scoring.
+    """
     lower = transcript_text.lower()
     matches = 0
     conflicts = 0
@@ -267,6 +295,7 @@ def tone_alignment_score_parts(transcript_text: str, tone: str) -> tuple:
 # ── Readability ─────────────────────────────────────────────────────────────
 
 def estimate_syllables(word: str) -> int:
+    """Approximate syllables for readability formulas."""
     word = word.lower().strip()
     if len(word) <= 2:
         return 1
@@ -289,6 +318,10 @@ def estimate_syllables(word: str) -> int:
 
 
 def flesch_kincaid_grade(text: str) -> float:
+    """
+    Compute approximate Flesch-Kincaid grade level.
+    Returns None for very short samples where readability is unreliable.
+    """
     sentences = re.split(r'[.!?]+', text)
     sentences = [s.strip() for s in sentences if s.strip()]
     if not sentences:
