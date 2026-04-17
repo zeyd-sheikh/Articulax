@@ -117,7 +117,7 @@ def count_filler_words(text: str) -> int:
     return count
 
 
-# ── Sentence splitting ──────────────────────────────────────────────────────
+# Sentence splitting ---------------------------------------------------------------
 
 def split_sentences(text: str, words: list = None) -> list:
     """
