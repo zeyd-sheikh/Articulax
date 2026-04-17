@@ -1,5 +1,10 @@
 """
-Cohere V2 SDK integration — embeddings for relevance + structured JSON feedback.
+This file handles:
+
+- connecting to the Cohere API
+- checking how relevant the transcript is to the topic
+- generating structured AI feedback for the session
+- returning fallback feedback if Cohere fails
 """
 
 import os
@@ -9,21 +14,20 @@ from services.text_analysis import cosine_similarity
 
 
 def get_cohere_client():
-    """Create Cohere client from environment key."""
+    """Create Cohere client from API key."""
     return cohere.ClientV2(api_key=os.getenv("COHERE_API_KEY"))
 
 
-# ── Embeddings for relevance ───────────────────────────────────────────────
+# Embeddings for relevance --------------------------------------------------
 
 def embed_topic_and_transcript(topic: str, transcript: str) -> float:
     """
-    Embed topic and transcript with Cohere embed-v4.0 and return their
-    cosine similarity as a 0.0–1.0 float.
+    Turn the topic and transcript into embeddings and return
+    how similar they are as a number from 0.0 to 1.0.
     """
     client = get_cohere_client()
 
-    # Topic is embedded as a "query" so semantic match is evaluated from prompt
-    # intent to delivered content.
+    # Treat the topic like a search query.
     topic_resp = client.embed(
         model="embed-v4.0",
         input_type="search_query",
@@ -32,7 +36,8 @@ def embed_topic_and_transcript(topic: str, transcript: str) -> float:
         output_dimension=1024,
     )
 
-    # Transcript is embedded as a "document"; trim length to keep requests stable.
+    # Treat the transcript like a document.
+    # Only use the first 2048 characters to keep it manageable.
     transcript_resp = client.embed(
         model="embed-v4.0",
         input_type="search_document",
@@ -48,7 +53,7 @@ def embed_topic_and_transcript(topic: str, transcript: str) -> float:
     return max(0.0, min(1.0, sim))
 
 
-# ── Structured feedback generation ─────────────────────────────────────────
+# Structured feedback generation ----------------------------------------------
 
 FEEDBACK_SCHEMA = {
     "type": "object",
@@ -84,7 +89,7 @@ def generate_feedback_json(
     Ask Cohere for structured JSON feedback about the session.
 
     Deterministic fallback exists to guarantee the app still returns valid
-    feedback payloads if Cohere is unavailable or returns malformed output.
+    feedback if Cohere is unavailable or returns malformed output.
     """
     try:
         return _call_cohere_feedback(
@@ -97,8 +102,8 @@ def generate_feedback_json(
 
 def _call_cohere_feedback(
     topic, audience, tone, duration, transcript_text,
-    scores, raw_metrics, low_sample_flags,
-) -> dict:
+    scores, raw_metrics, low_sample_flags,) -> dict:
+    
     client = get_cohere_client()
 
     flags_note = ""
@@ -155,7 +160,7 @@ Each feedback field should be 1-3 sentences. Strengths and improvements should e
     text = response.message.content[0].text
     parsed = json.loads(text)
 
-    # Validate all required keys before returning to route layer.
+    # Validate all required keys before returning to route.
     for key in FEEDBACK_SCHEMA["required"]:
         if key not in parsed:
             raise ValueError(f"Missing key: {key}")
@@ -163,7 +168,7 @@ Each feedback field should be 1-3 sentences. Strengths and improvements should e
     return parsed
 
 
-# ── Deterministic fallback ──────────────────────────────────────────────────
+# Deterministic fallback -----------------------------------------------------------------------
 
 def _score_comment(name: str, score: int) -> str:
     if score >= 85:
@@ -176,7 +181,7 @@ def _score_comment(name: str, score: int) -> str:
 def _deterministic_fallback(scores: dict, topic: str,
                             audience: str, tone: str) -> dict:
     """
-    Build non-LLM fallback feedback from numeric rubric scores only.
+    Build feedback from numeric rubric scores only.
     Ensures '/complete-session' can succeed even when Cohere fails.
     """
     overall = scores.get("overall_score", 0)

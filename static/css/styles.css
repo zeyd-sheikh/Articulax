@@ -1,5 +1,3 @@
-/* ── Reset & base ───────────────────────────────────────────────────────── */
-
 * {
     box-sizing: border-box;
     margin: 0;
@@ -14,7 +12,7 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-/* ── Layout ─────────────────────────────────────────────────────────────── */
+/*Layout*/
 
 .container {
     width: 90%;
@@ -22,7 +20,7 @@ body {
     margin: 0 auto;
 }
 
-/* ── Header / Nav ───────────────────────────────────────────────────────── */
+/*Header*/
 
 .site-header {
     background: #ffffff;
@@ -76,7 +74,7 @@ body {
     display: inline;
 }
 
-/* ── Page content ───────────────────────────────────────────────────────── */
+/*Page content*/
 
 .page-content {
     padding: 36px 0 56px;
@@ -103,7 +101,7 @@ body {
     font-size: 0.95rem;
 }
 
-/* ── Cards ──────────────────────────────────────────────────────────────── */
+/*Cards*/
 
 .card {
     background: #ffffff;
@@ -113,7 +111,7 @@ body {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
-/* ── Buttons ────────────────────────────────────────────────────────────── */
+/*Buttons*/
 
 .primary-btn,
 .secondary-btn,
@@ -168,7 +166,7 @@ body {
     width: 100%;
 }
 
-/* ── Hero / page actions ────────────────────────────────────────────────── */
+/*page actions */
 
 .hero-actions,
 .page-actions {
@@ -178,7 +176,7 @@ body {
     margin-top: 20px;
 }
 
-/* ── Info grid (home / about) ───────────────────────────────────────────── */
+/*Info grid*/
 
 .info-grid {
     display: grid;
@@ -208,7 +206,7 @@ body {
     opacity: 0.55;
 }
 
-/* ── Auth pages ─────────────────────────────────────────────────────────── */
+/*Auth pages*/
 
 .auth-wrapper {
     display: flex;
@@ -268,7 +266,7 @@ body {
     font-size: 0.9rem;
 }
 
-/* ── Mode tabs ──────────────────────────────────────────────────────────── */
+/*Mode tabs*/
 
 .mode-tabs {
     display: flex;
@@ -299,7 +297,7 @@ body {
     cursor: not-allowed;
 }
 
-/* ── Dashboard layout ───────────────────────────────────────────────────── */
+/*Dashboard layout*/
 
 .dashboard-top {
     display: grid;
@@ -323,7 +321,7 @@ body {
     color: #1f2329;
 }
 
-/* ── Chart ──────────────────────────────────────────────────────────────── */
+/*Chart*/
 
 .chart-placeholder {
     display: grid;
@@ -389,7 +387,7 @@ body {
     display: none;
 }
 
-/* ── Session list (dashboard recent) ────────────────────────────────────── */
+/*Session list*/
 
 .session-list {
     display: flex;
@@ -429,7 +427,7 @@ body {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-/* ── Topic section (unused in current templates but kept) ───────────────── */
+/*Topic section*/
 
 .topic-section {
     display: flex;
@@ -460,7 +458,7 @@ body {
     gap: 14px;
 }
 
-/* ── Setup form section ─────────────────────────────────────────────────── */
+/*Setup form section*/
 
 .setup-section {
     max-width: 960px;
@@ -510,7 +508,7 @@ body {
     color: #3b3f47;
 }
 
-/* ── Microphone box (session page) ──────────────────────────────────────── */
+/*Microphone box (session page)*/
 
 .mic-box {
     padding: 16px 18px;
@@ -531,7 +529,7 @@ body {
     font-size: 0.9rem;
 }
 
-/* ── Results layout ─────────────────────────────────────────────────────── */
+/*Results layout*/
 
 .results-layout {
     display: grid;
@@ -588,7 +586,7 @@ body {
     line-height: 1.65;
 }
 
-/* ── Score breakdown ────────────────────────────────────────────────────── */
+/*Score breakdown*/
 
 .score-breakdown {
     display: flex;
@@ -626,7 +624,7 @@ body {
     font-size: 0.95rem;
 }
 
-/* ── Transcript ─────────────────────────────────────────────────────────── */
+/*Transcript*/
 
 .transcript-card {
     margin-bottom: 22px;
@@ -652,7 +650,7 @@ body {
     font-size: 0.92rem;
 }
 
-/* ── Responsive ─────────────────────────────────────────────────────────── */
+/*Responsive*/
 
 @media (max-width: 900px) {
     .dashboard-top,
@@ -676,7 +674,7 @@ body {
     }
 }
 
-/* ── Session page specifics ─────────────────────────────────────────────── */
+/*Session page specifics*/
 
 .session-status-card {
     margin-top: 20px;
@@ -696,7 +694,7 @@ body {
     font-weight: 600;
 }
 
-/* ── Results: session details grid ──────────────────────────────────────── */
+/*Results: session details grid*/
 
 .session-details-grid {
     display: flex;
@@ -725,7 +723,7 @@ body {
     font-size: 0.92rem;
 }
 
-/* ── Per-skill feedback blocks ──────────────────────────────────────────── */
+/*Per-skill feedback blocks*/
 
 .skill-feedback-section {
     margin-bottom: 22px;
@@ -760,7 +758,7 @@ body {
     font-size: 0.9rem;
 }
 
-/* ── Filter tabs (kept for possible future use) ─────────────────────────── */
+/*Filter tabs*/
 
 .filter-tabs {
     display: flex;
@@ -785,7 +783,7 @@ body {
     border-color: #1f2329;
 }
 
-/* ── Cancel button (session page) ───────────────────────────────────────── */
+/*Cancel button*/
 
 .cancel-btn {
     background: #f0e0de;

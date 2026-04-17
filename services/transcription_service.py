@@ -1,6 +1,10 @@
 """
-AssemblyAI transcription via direct REST calls (no SDK).
-Upload → create transcript → poll until complete → return normalized result.
+This file handles:
+
+- uploading recorded audio to the AssemblyAI API
+- creating and tracking a transcription job
+- polling until the transcript is ready or fails
+- returning a cleaned, normalized transcription result for the scoring pipeline
 """
 
 import time
@@ -12,7 +16,7 @@ BASE_URL = "https://api.assemblyai.com"
 def upload_audio_to_assemblyai(file_path: str, api_key: str) -> str:
     """
     Step 1: Upload local audio bytes and get a temporary AssemblyAI URL.
-    This URL is then referenced when creating the transcription job.
+    This URL is then referenced when creating the transcription job
     """
     headers = {"authorization": api_key}
 
@@ -56,8 +60,8 @@ def poll_transcription_result(transcript_id: str, api_key: str,
     """
     Step 3: Poll job status until completion or failure.
 
-    AssemblyAI transcription is asynchronous; polling is required because the
-    transcript is not immediately available after job submission.
+    AssemblyAI transcription is asynchronous; transcript is not 
+    immediately available after job submission.
     """
     headers = {"authorization": api_key}
     url = f"{BASE_URL}/v2/transcript/{transcript_id}"
@@ -88,12 +92,11 @@ def transcribe_audio_file(file_path: str, api_key: str) -> dict:
     """
     End-to-end flow: upload -> submit -> poll -> normalize.
 
-    Returned payload shape (consumed by scoring pipeline):
     - text: full transcript string
     - confidence: overall ASR confidence
     - words: list of per-word timing/confidence dicts
     - status: "completed"
-    - raw_response: full AssemblyAI response for traceability
+    - raw_response: full AssemblyAI response
     """
     upload_url = upload_audio_to_assemblyai(file_path, api_key)
     transcript_id = submit_transcription_job(upload_url, api_key)

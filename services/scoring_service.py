@@ -1,9 +1,10 @@
 """
-Communication Mode scoring rubric implementation.
+This file handles:
 
-This module is the deterministic scoring rubric used by Articulax.
-All numeric scores are computed from transcript-derived metrics here in Python;
-AI services are used only for feedback text and optional semantic similarity.
+- analyzing the transcript and extracting scoring metrics
+- calculating individual communication skill scores
+- combining those scores into one overall session score
+- returning the final scoring data and raw metrics for storage/feedback
 """
 
 from services.text_analysis import (
@@ -18,7 +19,7 @@ from services.cohere_service import embed_topic_and_transcript
 import re
 
 
-# ── Audience grade-level target ranges ──────────────────────────────────────
+# Audience grade-level target ranges ------------------------------------------------------
 
 AUDIENCE_GRADE_RANGES = {
     "Kids": (3, 6),
@@ -27,7 +28,7 @@ AUDIENCE_GRADE_RANGES = {
 }
 
 
-# ── Base metrics builder ───────────────────────────────────────────────────
+# Base metrics builder ----------------------------------------------------------
 
 def build_base_metrics(topic: str, audience: str, tone: str,
                        transcript_payload: dict) -> dict:
@@ -185,7 +186,7 @@ def build_base_metrics(topic: str, audience: str, tone: str,
     }
 
 
-# ── Individual rubric scorers ──────────────────────────────────────────────
+# Individual rubric scorers ---------------------------------------------------------
 
 def score_clarity(m: dict) -> float:
     """
@@ -196,7 +197,6 @@ def score_clarity(m: dict) -> float:
     - words-per-minute pace against rubric target
     - count and duration of long pauses
 
-    Interpretation:
     Higher score means speech is clearer, appropriately paced, and less broken
     by long silence.
     """
@@ -228,7 +228,6 @@ def score_confidence(m: dict) -> float:
     - hesitation and long pause rates per minute
     - average uninterrupted speech segment length
 
-    Interpretation:
     Higher score reflects steadier flow and fewer hesitation markers.
     """
     total_words = max(m["total_words"], 1)
@@ -260,7 +259,6 @@ def score_structure(m: dict) -> float:
     - sentence count and average sentence length
     - sentence-length consistency (stddev)
 
-    Interpretation:
     Higher score indicates better signposting and more balanced structure.
     """
     total_words = max(m["total_words"], 1)
@@ -291,7 +289,6 @@ def score_relevance(m: dict, similarity: float) -> float:
     - topic keyword coverage ratio
     - tone cue alignment ratio
 
-    Interpretation:
     Higher score means the response stays on-topic and matches intended style.
     """
     kc = m["keyword_coverage_ratio"]
@@ -322,7 +319,6 @@ def score_vocabulary(m: dict) -> float:
     - repeated non-stopword rate
     - readability grade distance from audience target band
 
-    Interpretation:
     Higher score indicates richer vocabulary with less repetition and better
     complexity calibration for the selected audience.
     """
@@ -353,7 +349,7 @@ def score_vocabulary(m: dict) -> float:
             + 0.35 * audience_fit)
 
 
-# ── Main orchestrator ──────────────────────────────────────────────────────
+# Main orchestrator ------------------------------------------------------------
 
 def score_communication_session(
     topic: str,

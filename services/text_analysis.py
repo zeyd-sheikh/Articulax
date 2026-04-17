@@ -1,12 +1,16 @@
 """
-Deterministic text-analysis helpers for the Communication Mode scoring rubric.
-No external NLP libraries — only Python stdlib + regex.
+This file handles:
+
+- cleaning and analyzing transcript text with rule-based helpers
+- extracting features like filler words, sentence structure, keywords, and tone cues
+- calculating readability and vector similarity support metrics
+- providing reusable text-processing functions for the scoring system
 """
 
 import re
 import math
 
-# ── Stopwords (common English function words) ──────────────────────────────
+# Stopwords ----------------------------------------------------------------------
 
 STOPWORDS = {
     "a", "an", "the", "and", "or", "but", "if", "in", "on", "at", "to",
@@ -35,7 +39,6 @@ TRANSITION_PHRASES = [
     "however", "finally", "overall",
 ]
 
-# Tone cue lexicons per supported tone
 TONE_CUE_MATCHES = {
     "Formal": [
         "therefore", "however", "moreover", "furthermore", "regarding",
@@ -68,7 +71,7 @@ TONE_CUE_CONFLICTS = {
 }
 
 
-# ── Utility helpers ─────────────────────────────────────────────────────────
+# Utility helpers ----------------------------------------------------------------
 
 def clamp(x: float) -> float:
     """Clamp a value to [0, 100]."""
@@ -90,13 +93,12 @@ def content_words(tokens: list) -> list:
     return [t for t in tokens if t not in STOPWORDS and len(t) >= 2]
 
 
-# ── Filler words ────────────────────────────────────────────────────────────
+# Filler words -------------------------------------------------------------------------
 
 def count_filler_words(text: str) -> int:
     """
-    Count hesitation language used in delivery-confidence scoring.
+    Count hesitation language used in delivery confidence scoring.
 
-    Includes multi-word phrases (e.g., "you know") plus single-word fillers.
     """
     lower = text.lower()
     count = 0
@@ -159,7 +161,7 @@ def sentence_lengths(sentences: list) -> list:
     return [len(tokenize_words(s)) for s in sentences]
 
 
-# ── Statistics ──────────────────────────────────────────────────────────────
+# Statistics -------------------------------------------------------------------------
 
 def stddev(values: list) -> float:
     """Population standard deviation used for sentence-length consistency."""
@@ -170,17 +172,17 @@ def stddev(values: list) -> float:
     return math.sqrt(variance)
 
 
-# ── Topic keyword extraction ───────────────────────────────────────────────
+# Topic keyword extraction -------------------------------------------------------
 
 def extract_topic_keywords(topic: str, min_keywords: int = 5,
                            max_keywords: int = 10) -> list:
     """
-    Build a compact keyword set representing topic intent.
+    Create a small set of important keywords from the topic.
 
-    Strategy:
-    - keep informative unigrams
-    - prioritize informative bigrams for context
-    - pad with extra tokens when topic text is very short
+    How it works:
+    - keeps the important single words
+    - also includes useful word pairs for better meaning
+    - adds extra words if the topic is too short
     """
     tokens = re.findall(r"[a-z]+", topic.lower())
     informative = [t for t in tokens if t not in STOPWORDS and len(t) >= 3]
@@ -214,7 +216,7 @@ def extract_topic_keywords(topic: str, min_keywords: int = 5,
     return result
 
 
-# ── Keyword coverage ───────────────────────────────────────────────────────
+# Keyword coverage ----------------------------------------------------------
 
 def _simple_variants(word: str) -> list:
     """Generate simple singular/plural/close variants."""
@@ -242,8 +244,6 @@ def keyword_coverage(topic_keywords: list, transcript_text: str) -> tuple:
     """
     Estimate how much of the topic appears in transcript content.
 
-    Counts a keyword as covered by exact phrase match or simple morphological
-    variants of component words.
     """
     lower = transcript_text.lower()
     covered = 0
@@ -270,7 +270,7 @@ def keyword_coverage(topic_keywords: list, transcript_text: str) -> tuple:
     return covered, total
 
 
-# ── Tone alignment ─────────────────────────────────────────────────────────
+# Tone alignment -----------------------------------------------------------
 
 def tone_alignment_score_parts(transcript_text: str, tone: str) -> tuple:
     """
@@ -292,7 +292,7 @@ def tone_alignment_score_parts(transcript_text: str, tone: str) -> tuple:
     return matches, conflicts
 
 
-# ── Readability ─────────────────────────────────────────────────────────────
+# Readability --------------------------------------------------------------------
 
 def estimate_syllables(word: str) -> int:
     """Approximate syllables for readability formulas."""
@@ -319,7 +319,8 @@ def estimate_syllables(word: str) -> int:
 
 def flesch_kincaid_grade(text: str) -> float:
     """
-    Compute approximate Flesch-Kincaid grade level.
+    Compute approximate Flesch-Kincaid grade level (A readability formula that 
+    estimates the school grade level needed to understand a piece of text.).
     Returns None for very short samples where readability is unreliable.
     """
     sentences = re.split(r'[.!?]+', text)
@@ -341,7 +342,7 @@ def flesch_kincaid_grade(text: str) -> float:
     return round(grade, 1)
 
 
-# ── Cosine similarity (pure Python) ────────────────────────────────────────
+# Cosine similarity -------------------------------------------------------
 
 def cosine_similarity(vec_a: list, vec_b: list) -> float:
     if len(vec_a) != len(vec_b) or not vec_a:
